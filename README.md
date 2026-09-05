@@ -1,6 +1,6 @@
 # BakerStreet
 
-A hacking-style competition platform where players investigate open-source repositories, solve sequential challenges, and submit investigation reports.
+Explore the commits, issues, and hidden clues. Every piece of evidence leads you closer to the truth.
 
 ## Stack
 
