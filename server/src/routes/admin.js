@@ -1,0 +1,39 @@
+import { Router } from 'express';
+import { authenticate, requireAdmin } from '../middleware/auth.js';
+import * as adminEvent from '../controllers/admin/adminEventController.js';
+import * as adminCase from '../controllers/admin/adminCaseController.js';
+import * as adminTeam from '../controllers/admin/adminTeamController.js';
+import * as adminSub from '../controllers/admin/adminSubmissionController.js';
+import * as adminFinal from '../controllers/admin/adminFinalController.js';
+import * as adminExport from '../controllers/admin/adminExportController.js';
+
+const router = Router();
+
+router.get('/events', authenticate, requireAdmin, adminEvent.listEvents);
+router.post('/events', authenticate, requireAdmin, ...adminEvent.createEvent);
+router.get('/events/:id', authenticate, requireAdmin, adminEvent.getEvent);
+router.put('/events/:id', authenticate, requireAdmin, ...adminEvent.updateEvent);
+router.post('/events/:id/start', authenticate, requireAdmin, adminEvent.startEvent);
+router.post('/events/:id/pause', authenticate, requireAdmin, adminEvent.pauseEvent);
+router.post('/events/:id/end', authenticate, requireAdmin, adminEvent.endEvent);
+router.post('/events/:id/reset', authenticate, requireAdmin, adminEvent.resetEvent);
+
+router.get('/events/:id/cases', authenticate, requireAdmin, adminCase.listCases);
+router.post('/events/:id/cases', authenticate, requireAdmin, ...adminCase.createCase);
+router.put('/cases/:id', authenticate, requireAdmin, ...adminCase.updateCase);
+router.delete('/cases/:id', authenticate, requireAdmin, adminCase.deleteCase);
+router.put('/cases/:id/publish', authenticate, requireAdmin, ...adminCase.setPublished);
+router.put('/events/:id/cases/reorder', authenticate, requireAdmin, ...adminCase.reorderCases);
+
+router.get('/events/:id/teams', authenticate, requireAdmin, adminTeam.listTeams);
+router.delete('/teams/:id', authenticate, requireAdmin, adminTeam.deleteTeam);
+
+router.get('/events/:id/submissions', authenticate, requireAdmin, adminSub.listSubmissions);
+
+router.get('/events/:id/finals', authenticate, requireAdmin, adminFinal.listFinals);
+router.get('/finals/:id', authenticate, requireAdmin, adminFinal.getFinal);
+router.post('/finals/:id/judge', authenticate, requireAdmin, ...adminFinal.judgeFinal);
+
+router.get('/events/:id/export/:type', authenticate, requireAdmin, adminExport.exportCsv);
+
+export default router;

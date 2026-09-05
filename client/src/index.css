@@ -1,0 +1,78 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+  Noir Case File — single dark theme inspired by classic detective fiction.
+  Palette: near-black ground, slate-chrome rails, amber detective-lamp accent.
+*/
+:root {
+  --paper: 19 19 26;
+  --surface: 28 28 40;
+  --ink: 236 236 239;
+  --ink-soft: 164 164 188;
+  --ink-faint: 110 110 140;
+  --mark: 224 166 58;
+  --mark-bright: 250 204 120;
+  --mark-faint: 161 113 26;
+  --solid: 45 47 68;
+  --solid-soft: 62 65 92;
+  --edge: 54 54 76;
+  color-scheme: dark;
+}
+
+html {
+  background-color: rgb(var(--paper));
+}
+
+body {
+  font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  color: rgb(var(--ink));
+}
+
+a {
+  text-decoration: none;
+}
+
+::selection {
+  background-color: rgb(var(--mark) / 0.28);
+  color: rgb(var(--ink));
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: rgb(var(--paper));
+}
+::-webkit-scrollbar-thumb {
+  background: rgb(var(--edge));
+  border-radius: 9999px;
+  border: 2px solid rgb(var(--paper));
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgb(var(--solid-soft));
+}
+
+/* Faint crosshatch — the "case file fabric" behind chrome surfaces. */
+.noir-texture {
+  background-image: repeating-linear-gradient(
+      45deg,
+      rgb(255 255 255 / 0.018) 0 1px,
+      transparent 1px 9px
+    ),
+    repeating-linear-gradient(
+      -45deg,
+      rgb(255 255 255 / 0.012) 0 1px,
+      transparent 1px 9px
+    );
+}
+
+/* A black-out marker bar — used to redact hidden material in case files. */
+.redacted {
+  background-color: currentColor;
+  color: transparent;
+  border-radius: 2px;
+  user-select: none;
+}

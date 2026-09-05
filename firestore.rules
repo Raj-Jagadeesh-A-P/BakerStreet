@@ -1,0 +1,10 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Official logic is served by the Express API; the Firestore client SDK is
+    // never used directly by the browser app, so deny all client access.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

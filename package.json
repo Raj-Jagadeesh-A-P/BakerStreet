@@ -1,0 +1,35 @@
+{
+  "name": "bakerstreet",
+  "version": "1.0.0",
+  "private": true,
+  "description": "BakerStreet — open source detective event platform",
+  "type": "module",
+  "workspaces": [
+    "client",
+    "server"
+  ],
+  "scripts": {
+    "dev": "concurrently -n server,client -c blue,green \"npm run server\" \"npm run client\"",
+    "dev:prod": "concurrently -n api,client -c blue,green \"NODE_ENV=production node server/src/index.js\" \"npm run client\"",
+    "client": "npm run dev --workspace client",
+    "server": "npm run dev --workspace server",
+    "build": "npm run build --workspace client",
+    "start": "npm run start --workspace server",
+    "emulators": "firebase emulators:start --only auth,firestore,storage --project demo-glugot",
+    "db:seed": "node server/scripts/seed.js",
+    "db:seed:local": "firebase emulators:exec --only firestore,auth --project demo-glugot \"node server/scripts/seed.js\"",
+    "test": "firebase emulators:exec --only firestore,auth --project demo-glugot \"npm run test --workspace server\"",
+    "test:direct": "npm run test --workspace server"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "firebase-tools": "^15.29.0"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true,
+    "esbuild@0.25.12": true,
+    "@firebase/util@1.15.3": true,
+    "protobufjs@7.6.6": true,
+    "re2@1.26.1": true
+  }
+}
