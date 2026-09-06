@@ -1,6 +1,6 @@
 import { AppError } from '../middleware/errors.js';
 import { MESSAGES } from '../config.js';
-import { memberships, teams, subs } from '../db/repo.js';
+import { memberships, teams } from '../db/repo.js';
 
 export async function getMembership(eventId, userId) {
   const m = await memberships.get(userId, eventId);
@@ -15,45 +15,57 @@ export async function requireTeamForEvent(eventId, userId) {
   return { team: membership.team, isLeader: membership.isLeader };
 }
 
-export async function solvedCaseIds(teamId) {
-  return subs.solvedCaseIds(teamId);
-}
+// Builds per-sub-file status for a team within one Case. Unlock is strictly
+// sequential: a sub-file is SOLVED, then the next published one is UNLOCKED,
+// everything after is LOCKED. The closing challenge unlocks once every
+// published sub-file is solved AND the Case is OPEN.
+//
+// The effective solved set is the longest valid prefix of the published,
+// ordered sub-files. If the stored solved set has holes (e.g. legacy data with
+// file 3 solved but not file 2) the hole is re-sealed: the solved files past
+// the gap are ignored for navigation, so the team simply replays the missing
+// step instead of dead-ending on an "already completed" case sub-file.
+export function computeSubFileStates(caseRow, files, solved) {
+  const published = files
+    .filter((f) => f.published)
+    .sort((a, b) => a.order - b.order);
 
-// Builds per-case status for a team. Sequential unlock: the first published,
-// non-final case without a correct submission is the unlocked one; the final
-// case unlocks when every published non-final case is solved.
-export function computeCaseStates(cases, solved) {
-  const published = cases.filter((c) => c.published).sort((a, b) => a.order - b.order);
-  const normalCases = published.filter((c) => !c.finalCase);
-  const finalCase = published.find((c) => c.finalCase) || null;
-  const firstUnsolved = normalCases.find((c) => !solved.has(c.id)) || null;
-  // True when every published non-final case is solved (vacuous when there are none).
-  const allNormalSolved = firstUnsolved === null;
+  const effective = new Set();
+  for (const f of published) {
+    if (solved.has(f.id)) effective.add(f.id);
+    else break;
+  }
 
+  const firstUnsolved = published.find((f) => !effective.has(f.id)) || null;
   const states = new Map();
-  for (const c of published) {
+  for (const f of published) {
     let status;
-    if (!c.finalCase) {
-      if (solved.has(c.id)) status = 'SOLVED';
-      else if (firstUnsolved && firstUnsolved.id === c.id) status = 'UNLOCKED';
-      else status = 'LOCKED';
-    } else {
-      status = allNormalSolved ? 'UNLOCKED' : 'LOCKED';
-    }
-    states.set(c.id, {
-      id: c.id,
-      order: c.order,
-      title: c.title,
-      finalCase: c.finalCase,
-      published: c.published,
+    if (effective.has(f.id)) status = 'SOLVED';
+    else if (firstUnsolved && firstUnsolved.id === f.id) status = 'UNLOCKED';
+    else status = 'LOCKED';
+    states.set(f.id, {
+      id: f.id,
+      order: f.order,
+      title: f.title,
+      published: f.published,
+      points: f.points,
       status,
-      points: c.points,
     });
   }
-  const hasActive = !!firstUnsolved || !!finalCase;
-  const continueCaseId = firstUnsolved ? firstUnsolved.id : finalCase ? finalCase.id : null;
 
-  return { states, firstUnsolved, finalCase, allNormalSolved, continueCaseId, hasActive };
+  const allFilesSolved = firstUnsolved === null;
+  const opening = caseRow?.status === 'OPEN';
+  const closingUnlocked = allFilesSolved && opening;
+  const closed = caseRow?.status === 'CLOSED';
+
+  // continue points at the next sub-file, else the closing challenge, else null.
+  const continueTarget = firstUnsolved
+    ? { type: 'FILE', id: firstUnsolved.id }
+    : closingUnlocked
+      ? { type: 'CLOSING', id: caseRow?.id }
+      : null;
+
+  return { states, published, effective, firstUnsolved, allFilesSolved, closingUnlocked, closed, continueTarget };
 }
 
 export function eventViewable(event) {
@@ -73,6 +85,9 @@ export function assertSubmittable(event) {
   }
 }
 
-export async function attemptsUsed(teamId, caseId) {
-  return subs.attempts(teamId, caseId);
+// The Case must be admin-opened (global availability gate).
+export function assertCaseOpen(caseRow) {
+  if (!caseRow) throw new AppError(404, MESSAGES.notFound);
+  if (caseRow.status === 'CLOSED') throw new AppError(400, MESSAGES.caseClosed);
+  if (caseRow.status !== 'OPEN') throw new AppError(400, MESSAGES.caseNotOpen);
 }

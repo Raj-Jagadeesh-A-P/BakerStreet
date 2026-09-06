@@ -54,7 +54,7 @@ export async function testSignUpToken(email, password) {
   return { uid: data.localId, idToken: data.idToken };
 }
 
-const TOP_LEVEL_COLLECTIONS = ['users', 'events', 'cases', 'teams', 'submissions', 'hintUsages', 'scoreEvents', 'finalSubmissions'];
+const TOP_LEVEL_COLLECTIONS = ['users', 'events', 'cases', 'teams', 'submissions', 'hintUsages', 'scoreEvents', 'closings'];
 
 // Removes every document (including subcollections) from the emulator database.
 export async function resetDb() {

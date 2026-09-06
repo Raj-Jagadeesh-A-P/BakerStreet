@@ -1,6 +1,6 @@
 import { AppError, asyncHandler } from '../../middleware/errors.js';
 import { MESSAGES } from '../../config.js';
-import { events, teams, subs, finals } from '../../db/repo.js';
+import { events, teams, subs, closings } from '../../db/repo.js';
 import { refs, firestore } from '../../db/repo.js';
 
 export const listTeams = asyncHandler(async (req, res) => {
@@ -22,13 +22,13 @@ export const listTeams = asyncHandler(async (req, res) => {
   const total = teamRows.length;
   const slice = teamRows.slice((page - 1) * limit, page * limit);
 
-  const [solvedCounts, finalRows] = await Promise.all([subs.solvedCounts(eventId), finals.list(eventId)]);
-  const finalByTeam = new Map(finalRows.map((f) => [f.teamId, f]));
+  const [solvedCounts, closureRows] = await Promise.all([subs.solvedCounts(eventId), closings.list(eventId)]);
+  const closedByTeam = new Map();
+  for (const cl of closureRows) closedByTeam.set(cl.teamId, (closedByTeam.get(cl.teamId) || 0) + 1);
 
   const out = [];
   for (const t of slice) {
     const members = await teams.members(t.id);
-    const fin = finalByTeam.get(t.id);
     out.push({
       id: t.id,
       name: t.name,
@@ -36,10 +36,9 @@ export const listTeams = asyncHandler(async (req, res) => {
       score: t.score,
       createdAt: t.createdAt,
       solved: solvedCounts.get(t.id) || 0,
+      casesClosed: closedByTeam.get(t.id) || 0,
       memberCount: t.memberCount ?? members.length,
       members: members.map((m) => ({ id: m.id, name: m.name, email: m.email, isLeader: m.isLeader })),
-      finalStatus: fin?.status ?? null,
-      finalScore: fin?.totalScore ?? null,
     });
   }
 

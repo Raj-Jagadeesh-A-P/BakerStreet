@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus } from 'lucide-react';
+import { Plus, Play, Pause, Square, RotateCcw } from 'lucide-react';
 import { api } from '../../api.js';
 import { Button } from '../../components/ui/button.jsx';
 import { Card, CardContent } from '../../components/ui/card.jsx';
@@ -18,6 +18,8 @@ export default function AdminEvents() {
   const [error, setError] = useState(null);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [acting, setActing] = useState(null);
+  const [actionError, setActionError] = useState(null);
   const [form, setForm] = useState({
     name: '',
     code: '',
@@ -40,6 +42,19 @@ export default function AdminEvents() {
   useEffect(() => {
     load();
   }, []);
+
+  async function act(evId, action) {
+    setActing(evId);
+    setActionError(null);
+    try {
+      await api(`/admin/events/${evId}/${action}`, { method: 'POST' });
+      await load();
+    } catch (err) {
+      setActionError(err.message);
+    } finally {
+      setActing(null);
+    }
+  }
 
   function set(k) {
     return (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
@@ -86,6 +101,7 @@ export default function AdminEvents() {
       </div>
 
       <div className="space-y-2">
+        {actionError && <Alert tone="danger">{actionError}</Alert>}
         {events.length === 0 && (
           <Card>
             <CardContent className="py-10 text-center text-sm text-ink-faint">
@@ -100,10 +116,32 @@ export default function AdminEvents() {
                 <p className="font-semibold text-ink">{ev.name}</p>
                 <p className="font-mono text-xs text-ink-faint">CODE: {ev.code}</p>
               </div>
-              <div className="flex items-center gap-4 text-xs text-ink-faint">
+              <div className="flex flex-wrap items-center gap-4 text-xs text-ink-faint">
                 <span>{ev.teamCount} teams</span>
                 <span>{ev.caseCount} cases</span>
                 <Badge tone={STATUS_TONE[ev.status]}>{ev.status}</Badge>
+                <span className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                  {(ev.status === 'DRAFT' || ev.status === 'READY' || ev.status === 'PAUSED') && (
+                    <Button size="sm" onClick={() => act(ev.id, 'start')} disabled={acting === ev.id}>
+                      <Play className="h-3 w-3" /> {ev.status === 'PAUSED' ? 'Resume' : 'Start'}
+                    </Button>
+                  )}
+                  {ev.status === 'LIVE' && (
+                    <>
+                      <Button size="sm" variant="outline" onClick={() => act(ev.id, 'pause')} disabled={acting === ev.id}>
+                        <Pause className="h-3 w-3" /> Pause
+                      </Button>
+                      <Button size="sm" variant="danger" onClick={() => act(ev.id, 'end')} disabled={acting === ev.id}>
+                        <Square className="h-3 w-3" /> End
+                      </Button>
+                    </>
+                  )}
+                  {ev.status !== 'DRAFT' && (
+                    <Button size="sm" variant="ghost" onClick={() => act(ev.id, 'reset')} title="Reset to draft" disabled={acting === ev.id}>
+                      <RotateCcw className="h-3 w-3" />
+                    </Button>
+                  )}
+                </span>
               </div>
             </CardContent>
           </Card>

@@ -33,35 +33,33 @@ export const MESSAGES = {
   notStarted: 'Event has not started.',
   ended: 'Event has ended.',
   paused: 'Event is paused.',
-  locked: 'This case is locked.',
-  alreadySolved: 'This case is already solved.',
+  locked: 'This case sub-file is locked.',
+  alreadySolved: 'This case sub-file is already solved.',
   maxAttempts: 'You have reached the maximum attempts.',
   incorrect: 'Incorrect. Re-examine the evidence and try again.',
   notJoined: "You haven't joined an event yet.",
   teamFull: 'This team is full.',
   alreadyInTeam: 'You are already in a team for this event.',
   hintUsed: 'This hint has already been used.',
-  finalExists: 'Final investigation already submitted.',
-  finalLocked: 'The final case is not unlocked yet.',
+  caseNotOpen: 'This case is not open yet.',
+  caseClosed: 'This case is closed.',
+  notAllFiles: 'Solve every case sub-file before closing the case.',
+  alreadyClosed: 'Your team already closed this case.',
   notFound: 'Not found.',
   generic: 'Something went wrong. Please retry.',
 };
 
-export const DEFAULT_FINAL_SCORING = {
-  contributor: 100,
-  commit: 100,
-  issue: 75,
-  pr: 75,
-  rootCause: 100,
-  fix: 100,
-  evidence: 50,
-  total: 600,
-};
+// Identity personas are theme-only: a badge each participant picks at sign-up.
+export const IDENTITIES = ['PRIVATE_CLIENT', 'SCOTLAND_YARD', 'MYCROFT_HOLMES'];
 
-export function finalScoring(event) {
-  const f = event?.finalScoring;
-  if (f && typeof f === 'object') return { ...DEFAULT_FINAL_SCORING, ...f };
-  return { ...DEFAULT_FINAL_SCORING };
+// Podium bonus for closing a case. rank 4+ gets the `participation` amount
+// (0 by default). Per-case overrides live on the case doc as `podium`.
+export const DEFAULT_PODIUM = { first: 300, second: 200, third: 100, participation: 0 };
+
+export function podiumFor(caseRow) {
+  const p = caseRow?.podium;
+  if (p && typeof p === 'object') return { ...DEFAULT_PODIUM, ...p };
+  return { ...DEFAULT_PODIUM };
 }
 
 const MS = { s: 1000, m: 60000, h: 3600000, d: 86400000, w: 604800000 };

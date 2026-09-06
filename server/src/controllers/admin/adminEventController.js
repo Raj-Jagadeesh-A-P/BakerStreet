@@ -1,8 +1,8 @@
 import { z } from 'zod';
 import { AppError, asyncHandler } from '../../middleware/errors.js';
 import { validate } from '../../middleware/validate.js';
-import { MESSAGES, finalScoring } from '../../config.js';
-import { events, cases, subs, finals } from '../../db/repo.js';
+import { MESSAGES } from '../../config.js';
+import { events, cases, subs, closings } from '../../db/repo.js';
 
 const eventFields = z.object({
   name: z.string().trim().min(1).max(120),
@@ -12,7 +12,6 @@ const eventFields = z.object({
   teamMinSize: z.number().int().min(1).max(20).optional(),
   teamMaxSize: z.number().int().min(1).max(20).optional(),
   pollIntervalSeconds: z.number().int().min(3).max(300).optional(),
-  finalScoring: z.record(z.string(), z.number().int().min(0)).nullable().optional(),
 });
 
 export const listEvents = asyncHandler(async (req, res) => {
@@ -48,7 +47,6 @@ export const createEvent = [
       teamMinSize: rest.teamMinSize ?? 2,
       teamMaxSize: rest.teamMaxSize ?? 3,
       pollIntervalSeconds: rest.pollIntervalSeconds ?? 8,
-      finalScoring: rest.finalScoring ?? undefined,
     });
     res.status(201).json({ event });
   }),
@@ -62,21 +60,26 @@ export const getEvent = asyncHandler(async (req, res) => {
   const caseRows = await cases.list(eventId);
   const event = {
     ...eventData,
-    cases: caseRows.map((c) => ({ id: c.id, order: c.order, title: c.title, finalCase: c.finalCase, published: c.published })),
+    cases: caseRows.map((c) => ({
+      id: c.id,
+      order: c.order,
+      title: c.title,
+      status: c.status,
+      published: c.published,
+    })),
   };
 
-  const [teams, participants, solvedSubs, totalSubs, finalCount] = await Promise.all([
+  const [teams, participants, solvedSubs, totalSubs, closingCount] = await Promise.all([
     events.teamCount(eventId),
     events.participantCount(eventId),
     subs.solvedTotal(eventId),
     subs.total(eventId),
-    finals.count(eventId),
+    closings.count(eventId),
   ]);
 
   res.json({
     event,
-    scoring: finalScoring(event),
-    stats: { teams, participants, solvedSubs, totalSubs, finals: finalCount },
+    stats: { teams, participants, solvedSubs, totalSubs, closings: closingCount },
   });
 });
 

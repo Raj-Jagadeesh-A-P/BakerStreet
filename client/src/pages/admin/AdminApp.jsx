@@ -6,9 +6,10 @@ import { Brand } from '../../components/brand.jsx';
 import AdminEvents from './AdminEvents.jsx';
 import AdminEvent from './AdminEvent.jsx';
 import AdminCases from './AdminCases.jsx';
+import AdminSubFiles from './AdminSubFiles.jsx';
 import AdminTeams from './AdminTeams.jsx';
 import AdminSubmissions from './AdminSubmissions.jsx';
-import AdminFinals from './AdminFinals.jsx';
+import AdminClosings from './AdminClosings.jsx';
 import AdminLeaderboard from './AdminLeaderboard.jsx';
 
 const navFor = (eventId) => [
@@ -16,7 +17,7 @@ const navFor = (eventId) => [
   { to: `/admin/events/${eventId}/cases`, label: 'Cases', icon: FileText },
   { to: `/admin/events/${eventId}/teams`, label: 'Teams', icon: Users },
   { to: `/admin/events/${eventId}/submissions`, label: 'Submissions', icon: Inbox },
-  { to: `/admin/events/${eventId}/finals`, label: 'Finals', icon: Scale },
+  { to: `/admin/events/${eventId}/closings`, label: 'Closings', icon: Scale },
   { to: `/admin/events/${eventId}/leaderboard`, label: 'Leaderboard', icon: Trophy },
 ];
 
@@ -24,7 +25,7 @@ export default function AdminApp() {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, logout } = useAuth();
-  const match = location.pathname.match(/^\/admin\/events\/(\d+)/);
+  const match = location.pathname.match(/^\/admin\/events\/([^/]+)/);
   const eventId = match ? match[1] : null;
 
   return (
@@ -87,9 +88,10 @@ export default function AdminApp() {
             <Route path="events" element={<AdminEvents />} />
             <Route path="events/:eventId" element={<AdminEvent />} />
             <Route path="events/:eventId/cases" element={<AdminCases />} />
+            <Route path="events/:eventId/cases/:caseId/files" element={<AdminSubFiles />} />
             <Route path="events/:eventId/teams" element={<AdminTeams />} />
             <Route path="events/:eventId/submissions" element={<AdminSubmissions />} />
-            <Route path="events/:eventId/finals" element={<AdminFinals />} />
+            <Route path="events/:eventId/closings" element={<AdminClosings />} />
             <Route path="events/:eventId/leaderboard" element={<AdminLeaderboard />} />
             <Route path="*" element={<Navigate to="/admin/events" replace />} />
           </Routes>
@@ -97,7 +99,7 @@ export default function AdminApp() {
       </div>
 
       {/* mobile event nav */}
-      {eventId && (
+      {eventId && !location.pathname.includes('/files') && (
         <nav className="fixed inset-x-0 bottom-0 z-10 flex border-t border-edge bg-surface md:hidden">
           {navFor(eventId).map((n) => (
             <NavLink

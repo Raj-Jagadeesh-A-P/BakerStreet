@@ -22,7 +22,13 @@ export const authenticate = asyncHandler(async (req, _res, next) => {
   }
   const user = await users.get(payload.sub);
   if (!user) throw new AppError(401, 'Account no longer exists.');
-  req.user = { id: user.id, name: user.name, email: user.email, role: user.role };
+  req.user = {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    identity: user.identity ?? null,
+  };
   next();
 });
 

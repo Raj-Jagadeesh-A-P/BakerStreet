@@ -87,6 +87,7 @@ export default function AdminSubmissions() {
               <TR>
                 <TH>Team</TH>
                 <TH>Case</TH>
+                <TH>Sub-File</TH>
                 <TH className="w-1/3">Answer</TH>
                 <TH>Result</TH>
                 <TH className="text-right">When</TH>
@@ -95,7 +96,7 @@ export default function AdminSubmissions() {
             <TBody>
               {data.submissions.length === 0 && (
                 <TR>
-                  <TD colSpan={5} className="py-8 text-center text-ink-faint">No submissions match.</TD>
+                  <TD colSpan={6} className="py-8 text-center text-ink-faint">No submissions match.</TD>
                 </TR>
               )}
               {data.submissions.map((s) => (
@@ -103,6 +104,9 @@ export default function AdminSubmissions() {
                   <TD className="font-medium text-ink">{s.team.name}</TD>
                   <TD>
                     <span className="text-xs text-ink-faint">#{s.case.order}</span> {s.case.title}
+                  </TD>
+                  <TD className="max-w-0 truncate text-ink-soft">
+                    <span className="text-xs text-ink-faint">#{s.file.order}</span> {s.file.title}
                   </TD>
                   <TD className="max-w-0 truncate font-mono text-xs text-ink-soft">{s.answer}</TD>
                   <TD>

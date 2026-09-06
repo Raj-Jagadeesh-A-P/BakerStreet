@@ -59,8 +59,8 @@ export default function Landing() {
             <p className="mt-1 text-xs text-ink-faint">Members per team</p>
           </div>
           <div>
-            <p className="font-type text-2xl text-ink">1</p>
-            <p className="mt-1 text-xs text-ink-faint">Final investigation</p>
+            <p className="font-type text-2xl text-ink">+</p>
+            <p className="mt-1 text-xs text-ink-faint">Podium closing bonuses</p>
           </div>
         </div>
       </div>

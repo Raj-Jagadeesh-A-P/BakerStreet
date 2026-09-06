@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { ExternalLink, Lightbulb, CheckCircle2 } from 'lucide-react';
 import { api } from '../api.js';
 import { ParticipantHeader } from '../components/brand.jsx';
+import { useAuth } from '../context/auth.jsx';
 import { Button } from '../components/ui/button.jsx';
 import { Card, CardContent } from '../components/ui/card.jsx';
 import { Badge } from '../components/ui/badge.jsx';
@@ -63,9 +64,11 @@ function SectionLabel({ children }) {
 }
 
 export default function CaseView() {
-  const { id } = useParams();
+  const { cid, fid } = useParams();
   const navigate = useNavigate();
-  const [caseData, setCaseData] = useState(null);
+  const { membership } = useAuth();
+  const [eventId, setEventId] = useState(membership?.eventId ?? null);
+  const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -73,46 +76,64 @@ export default function CaseView() {
   const [submitError, setSubmitError] = useState(null);
   const [busy, setBusy] = useState(false);
   const [justSolved, setJustSolved] = useState(false);
-  const [unlockedNext, setUnlockedNext] = useState(null);
+  const [next, setNext] = useState(null);
   const [revealedHints, setRevealedHints] = useState({});
   const [hintBusy, setHintBusy] = useState(null);
   const [hintError, setHintError] = useState(null);
 
   useEffect(() => {
     let alive = true;
-    setLoading(true);
-    setError(null);
-    api(`/cases/${id}`)
-      .then((d) => {
+    (async () => {
+      try {
+        let eid = membership?.eventId;
+        if (!eid) {
+          const me = await api('/auth/me');
+          eid = me.membership?.eventId;
+        }
+        if (!eid) {
+          navigate('/join', { replace: true });
+          return;
+        }
+        setEventId(eid);
+        const d = await api(`/events/${eid}/cases/${cid}/files/${fid}`);
         if (!alive) return;
-        setCaseData(d);
+        setData(d);
         const revealed = {};
-        d.case.hints.forEach((h) => (revealed[h.id] = h.used ? h : false));
+        d.file.hints.forEach((h) => (revealed[h.id] = h.used ? h : false));
         setRevealedHints(revealed);
-      })
-      .catch((e) => alive && setError(e.message))
-      .finally(() => alive && setLoading(false));
+      } catch (e) {
+        if (alive) setError(e.message);
+      } finally {
+        if (alive) setLoading(false);
+      }
+    })();
     return () => {
       alive = false;
     };
-  }, [id]);
+  }, [cid, fid, membership?.eventId, navigate]);
 
-  if (loading) return <PageState message="Opening case file…" />;
+  if (loading) return <PageState message="Opening sub-file…" />;
   if (error) return <ErrorState error={error} />;
-  if (!caseData) return null;
+  if (!data) return null;
 
-  const { event, case: c } = caseData;
-  const isFinal = c.finalCase;
+  const { event, case: parent } = data;
+  const f = data.file;
+  const locked = f.status === 'LOCKED';
+  const canSubmit = !f.solved && !locked && data.submissionAllowed;
 
   async function onSubmit(e) {
     e.preventDefault();
     setSubmitError(null);
     setBusy(true);
     try {
-      const r = await api(`/cases/${c.id}/submit`, { method: 'POST', body: { answer } });
+      const r = await api(`/events/${eventId}/cases/${cid}/files/${fid}/submit`, {
+        method: 'POST',
+        body: { answer },
+      });
       if (r.correct) {
         setJustSolved(true);
-        setUnlockedNext(r.unlockedNext);
+        setNext(r.continue);
+        setData((prev) => ({ ...prev, file: { ...prev.file, solved: true } }));
       } else {
         setSubmitError(r.message);
         setAnswer('');
@@ -128,7 +149,9 @@ export default function CaseView() {
     setHintBusy(hintId);
     setHintError(null);
     try {
-      const r = await api(`/cases/${c.id}/hints/${hintId}/use`, { method: 'POST' });
+      const r = await api(`/events/${eventId}/cases/${cid}/files/${fid}/hints/${hintId}/use`, {
+        method: 'POST',
+      });
       setRevealedHints((prev) => ({ ...prev, [hintId]: r.hint }));
     } catch (err) {
       setHintError(err.message);
@@ -138,13 +161,19 @@ export default function CaseView() {
   }
 
   function goNext() {
-    if (isFinal) {
-      navigate('/final');
-    } else if (unlockedNext) {
-      navigate(`/case/${unlockedNext}`);
-    } else {
+    if (!next) {
       navigate('/dashboard');
+      return;
     }
+    if (next.type === 'CLOSING') {
+      navigate(`/final/${cid}`);
+    } else {
+      navigate(`/case/${cid}/${next.id}`);
+    }
+  }
+
+  function getHint(id) {
+    return revealedHints[id];
   }
 
   return (
@@ -157,92 +186,117 @@ export default function CaseView() {
           </button>
           <span className="mx-2">/</span>
           <span className="text-ink-soft">
-            {isFinal ? 'Final Case' : `Case ${String(c.order).padStart(2, '0')}`}
+            Case {String(parent.order).padStart(2, '0')} · Sub-file {String(f.order).padStart(2, '0')}
           </span>
         </nav>
 
         <Card className="mb-6 overflow-hidden">
           <div className="noir-texture border-b border-edge bg-solid px-5 py-4 text-white">
             <p className="font-type text-xs tracking-[0.3em] text-mark-bright/80">
-              {isFinal ? 'Final Case' : `Case ${String(c.order).padStart(2, '0')}`}
+              {parent.title} · Sub-file {String(f.order).padStart(2, '0')}
             </p>
-            <h1 className="mt-1 font-type text-2xl">{c.title}</h1>
+            <h1 className="mt-1 font-type text-2xl">{f.title}</h1>
             <div className="mt-2 flex flex-wrap items-center gap-2 font-mono text-xs text-white/70">
-              <span>Worth {c.points} pts</span>
-              {c.maxAttempts != null && <span>• {c.attemptsLeft} of {c.maxAttempts} attempts left</span>}
-              <Badge tone={c.solved ? 'success' : 'gold'} className="ml-auto">{c.solved ? 'Solved' : 'Unlocked'}</Badge>
+              <span>Worth {f.points} pts</span>
+              {f.maxAttempts != null && <span>• {f.attemptsLeft} of {f.maxAttempts} attempts left</span>}
+              <Badge tone={f.solved ? 'success' : 'gold'} className="ml-auto">
+                {f.solved ? 'Solved' : locked ? 'Locked' : 'Unlocked'}
+              </Badge>
             </div>
           </div>
 
           <CardContent className="space-y-7">
-            {c.story && (
-              <section className="space-y-2">
-                <SectionLabel>Case File</SectionLabel>
-                <div className="rounded-md border border-edge bg-surface/60 px-4 py-3">
-                  <p className="whitespace-pre-wrap font-type text-[15px] leading-7 text-ink-soft">{c.story}</p>
-                </div>
-              </section>
-            )}
-
-            <section className="space-y-2">
-              <SectionLabel>Question</SectionLabel>
-              <p className="whitespace-pre-wrap text-[15px] leading-relaxed text-ink">{c.question}</p>
-              {c.githubUrl && (
-                <a
-                  href={c.githubUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="mt-3 inline-flex h-9 items-center gap-2 rounded-md border border-edge px-3 font-mono text-sm font-medium text-ink-soft hover:bg-ink/5"
-                >
-                  Open GitHub <ExternalLink className="h-4 w-4" />
-                </a>
-              )}
-            </section>
-
-            {!isFinal ? (
+            {locked ? (
               <section className="space-y-3">
-                <SectionLabel>Your Answer</SectionLabel>
-                {justSolved ? (
-                  <div className="space-y-4">
-                    <Alert tone="success" className="flex items-center gap-2">
-                      <CheckCircle2 className="h-5 w-5" /> Correct! Evidence has been recorded.
-                    </Alert>
-                    <Button onClick={goNext}>
-                      {isFinal || unlockedNext ? 'Continue to next case →' : 'Back to dashboard'}
-                    </Button>
-                  </div>
-                ) : c.solved ? (
-                  <Alert tone="success">This case is already solved by your team.</Alert>
-                ) : (
-                  <form onSubmit={onSubmit} className="space-y-3">
-                    <AnswerInput type={c.type} options={c.options} value={answer} onChange={setAnswer} />
-                    {!c.submissionAllowed && (
-                      <Alert tone="info">
-                        {event.status === 'PAUSED' ? 'The event is paused. Submissions are disabled.' : 'Submissions are currently disabled.'}
-                      </Alert>
-                    )}
-                    {submitError && <Alert tone="danger">{submitError}</Alert>}
-                    <Button type="submit" disabled={busy || !c.submissionAllowed || answer.trim().length === 0}>
-                      {busy ? 'Checking…' : 'Submit Answer'}
-                    </Button>
-                  </form>
-                )}
-              </section>
-            ) : (
-              <section className="space-y-3">
-                <SectionLabel>Final Step</SectionLabel>
                 <Alert tone="info">
-                  This is the final investigation. Submit your full report through the Final Investigation form.
+                  This sub-file is locked. Solve the earlier sub-files first — the case unlocks strictly in order.
                 </Alert>
-                <Button className="mt-2" onClick={() => navigate('/final')}>
-                  Open Final Investigation
+                <Button variant="outline" onClick={() => navigate('/dashboard')}>
+                  Back to dashboard
                 </Button>
               </section>
+            ) : (
+              <>
+                {f.story && (
+                  <section className="space-y-2">
+                    <SectionLabel>Case File</SectionLabel>
+                    <div className="rounded-md border border-edge bg-surface/60 px-4 py-3">
+                      <p className="whitespace-pre-wrap font-type text-[15px] leading-7 text-ink-soft">{f.story}</p>
+                    </div>
+                  </section>
+                )}
+
+                {f.question && (
+                  <section className="space-y-2">
+                    <SectionLabel>Question</SectionLabel>
+                    <p className="whitespace-pre-wrap text-[15px] leading-relaxed text-ink">{f.question}</p>
+                    {f.githubUrl && (
+                      <a
+                        href={f.githubUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-3 inline-flex h-9 items-center gap-2 rounded-md border border-edge px-3 font-mono text-sm font-medium text-ink-soft hover:bg-ink/5"
+                      >
+                        Open GitHub <ExternalLink className="h-4 w-4" />
+                      </a>
+                    )}
+                  </section>
+                )}
+
+                {f.evidence.length > 0 && (
+                  <section className="space-y-2">
+                    <SectionLabel>Evidence in this file</SectionLabel>
+                    <div className="overflow-hidden rounded-md border border-edge">
+                      <div className="divide-y divide-edge/60">
+                        {f.evidence.map((e, i) => (
+                          <div key={i} className="flex items-center gap-3 px-4 py-2 text-sm">
+                            <span className="w-44 shrink-0 font-medium text-ink-faint">{e.label}</span>
+                            <span className="truncate font-mono text-ink">{e.value}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </section>
+                )}
+
+                <section className="space-y-3">
+                  <SectionLabel>Your Answer</SectionLabel>
+                  {justSolved ? (
+                    <div className="space-y-4">
+                      <Alert tone="success" className="flex items-center gap-2">
+                        <CheckCircle2 className="h-5 w-5" /> Correct! Evidence has been recorded.
+                        {next && next.type === 'CLOSING' && <span>All sub-files solved — you can close the case.</span>}
+                      </Alert>
+                      <Button onClick={goNext}>
+                        {next ? (next.type === 'CLOSING' ? 'Close the Case →' : 'Continue to next sub-file →') : 'Back to dashboard'}
+                      </Button>
+                    </div>
+                  ) : f.solved ? (
+                    <Alert tone="success">This sub-file is already solved by your team.</Alert>
+                  ) : (
+                    <form onSubmit={onSubmit} className="space-y-3">
+                      <AnswerInput type={f.type} options={f.options?.options} value={answer} onChange={setAnswer} />
+                      {!data.submissionAllowed && (
+                        <Alert tone="info">
+                          {event.status === 'PAUSED'
+                            ? 'The investigation is paused. Submissions are disabled.'
+                            : 'Submissions are currently disabled.'}
+                        </Alert>
+                      )}
+                      {submitError && <Alert tone="danger">{submitError}</Alert>
+                      }
+                      <Button type="submit" disabled={busy || !canSubmit || answer.trim().length === 0}>
+                        {busy ? 'Checking…' : 'Submit Answer'}
+                      </Button>
+                    </form>
+                  )}
+                </section>
+              </>
             )}
           </CardContent>
         </Card>
 
-        {c.hints.length > 0 && (
+        {!locked && f.hints.length > 0 && (
           <Card>
             <CardContent>
               <h2 className="flex items-center gap-2 font-type text-xs tracking-[0.28em] text-mark">
@@ -250,8 +304,8 @@ export default function CaseView() {
               </h2>
               {hintError && <Alert tone="danger" className="mt-3">{hintError}</Alert>}
               <div className="mt-3 space-y-2">
-                {c.hints.map((h) => {
-                  const revealed = revealedHints[h.id];
+                {f.hints.map((h) => {
+                  const revealed = getHint(h.id);
                   return (
                     <div key={h.id} className="rounded-md border border-edge p-3">
                       {revealed ? (
@@ -272,7 +326,7 @@ export default function CaseView() {
                           <Button
                             size="sm"
                             variant="outline"
-                            disabled={hintBusy === h.id || !c.submissionAllowed || c.solved}
+                            disabled={hintBusy === h.id || !data.submissionAllowed || f.solved}
                             onClick={() => useHint(h.id)}
                           >
                             {hintBusy === h.id ? '…' : 'Use Hint'}

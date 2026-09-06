@@ -1,17 +1,16 @@
 import { z } from 'zod';
 import { AppError, asyncHandler } from '../middleware/errors.js';
 import { validate } from '../middleware/validate.js';
-import { MESSAGES } from '../config.js';
+import { MESSAGES, podiumFor } from '../config.js';
 import {
   getMembership,
   requireTeamForEvent,
-  solvedCaseIds,
-  computeCaseStates,
+  computeSubFileStates,
   eventViewable,
 } from '../services/unlock.js';
 import { teamEvidenceRows } from '../services/evidence.js';
 import { randomCode } from '../utils/random.js';
-import { events, cases, subs, hintUsages, teams, finals } from '../db/repo.js';
+import { events, cases, subfiles, subs, teams } from '../db/repo.js';
 import { refs, runTransaction, FieldValue } from '../db/repo.js';
 
 const publicEvent = (event, now = null) => ({
@@ -66,6 +65,12 @@ export const createTeam = [
     if (existing) throw new AppError(400, MESSAGES.alreadyInTeam);
     if (event.teamMaxSize < 1) throw new AppError(400, 'Invalid team size configuration.');
 
+    const teamName = req.body.name.trim();
+    const nameDup = await teams.getByName(eventId, teamName);
+    if (nameDup) {
+      throw new AppError(409, 'A team with this name already exists in this investigation.');
+    }
+
     let code = randomCode(6);
     for (let i = 0; i < 5; i++) {
       const dup = await teams.getByCode(eventId, code);
@@ -73,7 +78,6 @@ export const createTeam = [
       code = randomCode(6);
     }
 
-    const teamName = req.body.name.trim();
     const teamId = await runTransaction(async (tx) => {
       const teamRef = refs.teams().doc();
       tx.create(teamRef, {
@@ -145,64 +149,69 @@ export const dashboard = asyncHandler(async (req, res) => {
 
   const { team } = await requireTeamForEvent(eventId, req.user.id);
 
-  const [metas, solved, attemptsByCase, usages, memberRows, finalRow, teamScores] = await Promise.all([
+  const [caseRows, memberRows, solvedAll, teamScores, evidence] = await Promise.all([
     cases.list(eventId),
-    solvedCaseIds(team.id),
-    subs.countsByCase(team.id),
-    hintUsages.listForTeam(team.id),
     teams.members(team.id),
-    finals.getByTeam(team.id),
+    subs.solvedFileIdsAll(team.id),
     teams.list(eventId),
+    teamEvidenceRows(team.id, eventId),
   ]);
 
-  const states = computeCaseStates(metas, solved);
-  const hintsByCase = new Map();
-  for (const u of usages) {
-    hintsByCase.set(u.caseId, (hintsByCase.get(u.caseId) || 0) + 1);
+  let continueTarget = null;
+  const progress = [];
+  for (const c of caseRows) {
+    const fileMeta = await subfiles.list(c.id);
+    const solvedCount = fileMeta.filter((f) => f.published && solvedAll.has(f.id)).length;
+    const totalCount = fileMeta.filter((f) => f.published).length;
+    progress.push({ id: c.id, solved: solvedCount, total: totalCount });
+    if (c.status === 'OPEN' && !continueTarget) {
+      const states = computeSubFileStates(c, fileMeta, solvedAll);
+      continueTarget = states.continueTarget;
+    }
   }
 
-  const caseRows = metas
-    .slice()
-    .sort((a, b) => a.order - b.order)
-    .map((c) => {
-      const st = states.states.get(c.id);
-      const used = attemptsByCase.get(c.id) || 0;
-      return {
-        id: c.id,
-        order: c.order,
-        title: c.title,
-        finalCase: c.finalCase,
-        published: c.published,
-        status: st.status,
-        points: c.points,
-        attemptsUsed: used,
-        attemptsLeft: c.maxAttempts == null ? null : Math.max(0, c.maxAttempts - used),
-        hintsUsed: hintsByCase.get(c.id) || 0,
-      };
-    });
-
+  const openCase = caseRows.find((c) => c.status === 'OPEN') || null;
   const rank = teamScores.findIndex((t) => t.id === team.id) + 1;
-  const evidence = await teamEvidenceRows(team.id, eventId);
 
   res.json({
     event: publicEvent(event),
-    submissionAllowed:
-      eventViewable(event) &&
-      event.status === 'LIVE' &&
-      (!event.endTime || new Date(event.endTime).getTime() > Date.now()) &&
-      (!event.startTime || new Date(event.startTime).getTime() <= Date.now()),
+    submissionAllowed: eventViewable(event) && event.status === 'LIVE',
     team: {
       id: team.id,
       name: team.name,
       code: team.code,
       score: team.score,
       rank,
+      identity: req.user.identity,
       isLeader: memberRows.some((m) => m.id === req.user.id && m.isLeader),
       members: memberRows.map((m) => ({ id: m.id, name: m.name, isLeader: m.isLeader })),
-      finalSubmitted: !!finalRow,
     },
-    cases: caseRows,
+    currentCase: openCase
+      ? {
+          id: openCase.id,
+          order: openCase.order,
+          title: openCase.title,
+          plot: openCase.plot,
+          status: openCase.status,
+          startsAt: openCase.startsAt,
+          closedAt: openCase.closedAt,
+          podium: podiumFor(openCase),
+        }
+      : null,
+    cases: caseRows.map((c) => {
+      const p = progress.find((x) => x.id === c.id) || { solved: 0, total: 0 };
+      return {
+        id: c.id,
+        order: c.order,
+        title: c.title,
+        published: c.published,
+        status: c.status,
+        startsAt: c.startsAt,
+        closedAt: c.closedAt,
+        files: p,
+      };
+    }),
+    continue: continueTarget,
     evidence,
-    continueCaseId: states.continueCaseId,
   });
 });

@@ -34,10 +34,14 @@ export const refs = {
 
   case: (id) => firestore.doc(`cases/${id}`),
   cases: () => firestore.collection('cases'),
-  answers: (caseId) => firestore.collection(`cases/${caseId}/answers`),
-  hints: (caseId) => firestore.collection(`cases/${caseId}/hints`),
-  hint: (caseId, hintId) => firestore.doc(`cases/${caseId}/hints/${hintId}`),
-  evidence: (caseId) => firestore.collection(`cases/${caseId}/evidence`),
+
+  // Case sub-files live in a subcollection under each Case.
+  subfiles: (caseId) => firestore.collection(`cases/${caseId}/subfiles`),
+  subfile: (caseId, fileId) => firestore.doc(`cases/${caseId}/subfiles/${fileId}`),
+  answers: (caseId, fileId) => firestore.collection(`cases/${caseId}/subfiles/${fileId}/answers`),
+  hints: (caseId, fileId) => firestore.collection(`cases/${caseId}/subfiles/${fileId}/hints`),
+  hint: (caseId, fileId, hintId) => firestore.doc(`cases/${caseId}/subfiles/${fileId}/hints/${hintId}`),
+  evidence: (caseId, fileId) => firestore.collection(`cases/${caseId}/subfiles/${fileId}/evidence`),
 
   team: (id) => firestore.doc(`teams/${id}`),
   teams: () => firestore.collection('teams'),
@@ -51,9 +55,9 @@ export const refs = {
   scoreEventDoc: () => firestore.collection('scoreEvents').doc(),
   scoreEvents: () => firestore.collection('scoreEvents'),
 
-  finalDoc: () => firestore.collection('finalSubmissions').doc(),
-  finals: () => firestore.collection('finalSubmissions'),
-  final: (id) => firestore.doc(`finalSubmissions/${id}`),
+  closingDoc: () => firestore.collection('closings').doc(),
+  closings: () => firestore.collection('closings'),
+  closing: (id) => firestore.doc(`closings/${id}`),
 };
 
 export const runTransaction = (cb) => firestore.runTransaction(cb);
@@ -105,11 +109,14 @@ export const events = {
     return (await refs.teams().where('eventId', '==', eventId).get()).size;
   },
   async participantCount(eventId) {
-    const teams = await teams.list(eventId);
-    return teams.reduce((sum, t) => sum + (t.memberCount ?? 0), 0);
+    const teamRows = await teams.list(eventId);
+    return teamRows.reduce((sum, t) => sum + (t.memberCount ?? 0), 0);
   },
 };
 
+// Cases are the framing competitions inside an Investigation. Each Case owns a
+// set of sub-files (the Q&A puzzles) and a closing challenge (a final answer,
+// auto-checked). `status` is admin-driven: LOCKED -> OPEN -> CLOSED.
 export const cases = {
   async get(id) {
     return mapDoc(await refs.case(id).get());
@@ -120,28 +127,72 @@ export const cases = {
     );
   },
   async update(id, data) {
-    await refs.case(id).set(data, { merge: true });
+    await refs.case(id).set(dropUndefined(data), { merge: true });
     return mapDoc(await refs.case(id).get());
   },
   async count(eventId) {
     return (await refs.cases().where('eventId', '==', eventId).get()).size;
   },
-  async listFull(eventId) {
+  async create(eventId, data) {
+    const ref = refs.cases().doc();
+    await ref.set({ eventId, ...dropUndefined(data), createdAt: now() });
+    return mapDoc(await ref.get());
+  },
+  async delete(caseId) {
+    await deleteRecursive(refs.case(caseId));
+  },
+  async lastOrder(eventId) {
     const rows = await cases.list(eventId);
+    return rows.length ? rows[rows.length - 1].order : 0;
+  },
+  // The currently open case, if any.
+  async open(eventId) {
+    const rows = await cases.list(eventId);
+    return rows.find((c) => c.status === 'OPEN') || null;
+  },
+  async subFileCount(caseId) {
+    return (await refs.subfiles(caseId).get()).size;
+  },
+};
+
+// Case sub-files mirror the old single-question "case" rows.
+export const subfiles = {
+  async list(caseId) {
+    return mapCol(await refs.subfiles(caseId).orderBy('order', 'asc').get());
+  },
+  async get(caseId, fileId) {
+    return mapDoc(await refs.subfile(caseId, fileId).get());
+  },
+  async update(caseId, fileId, data) {
+    await refs.subfile(caseId, fileId).set(dropUndefined(data), { merge: true });
+    return mapDoc(await refs.subfile(caseId, fileId).get());
+  },
+  async delete(caseId, fileId) {
+    await deleteRecursive(refs.subfile(caseId, fileId));
+  },
+  async count(caseId) {
+    return (await refs.subfiles(caseId).get()).size;
+  },
+  async lastOrder(caseId) {
+    const rows = await subfiles.list(caseId);
+    return rows.length ? rows[rows.length - 1].order : 0;
+  },
+  async listFull(caseId) {
+    const rows = await subfiles.list(caseId);
     for (const row of rows) {
-      row.answers = await answers.list(row.id);
-      row.hints = await hints.list(row.id);
-      row.evidence = await evidence.list(row.id);
+      row.answers = await answers.list(caseId, row.id);
+      row.hints = await hints.list(caseId, row.id);
+      row.evidence = await evidence.list(caseId, row.id);
     }
     return rows;
   },
-  async create(eventId, data, { answers: ans = [], hints: h = [], evidence: ev = [] } = {}) {
-    const ref = refs.cases().doc();
+  async create(caseId, data, { answers: ans = [], hints: h = [], evidence: ev = [] } = {}) {
+    const ref = refs.subfiles(caseId).doc();
     const b = firestore.batch();
-    b.set(ref, { eventId, ...dropUndefined(data), createdAt: now() });
-    const answerIds = ans.map(() => refs.answers(ref.id).doc());
-    const hintRefs = h.map(() => refs.hints(ref.id).doc());
-    const evidenceRefs = ev.map(() => refs.evidence(ref.id).doc());
+    b.set(ref, { ...dropUndefined(data), createdAt: now() });
+    const answerIds = ans.map(() => refs.answers(caseId, ref.id).doc());
+    const hintRefs = h.map(() => refs.hints(caseId, ref.id).doc());
+    const evidenceRefs = ev.map(() => refs.evidence(caseId, ref.id).doc());
     answerIds.forEach((r, i) => b.set(r, { value: ans[i].value }));
     hintRefs.forEach((r, i) =>
       b.set(r, { title: h[i].title ?? '', text: h[i].text, cost: h[i].cost ?? 10, order: i + 1 }),
@@ -150,7 +201,6 @@ export const cases = {
     await b.commit();
     return {
       id: ref.id,
-      eventId,
       ...data,
       answers: ans.map((a, i) => ({ id: answerIds[i].id, value: a.value })),
       hints: h.map((hh, i) => ({
@@ -163,53 +213,50 @@ export const cases = {
       evidence: ev.map((ee, i) => ({ id: evidenceRefs[i].id, label: ee.label, value: ee.value, order: i + 1 })),
     };
   },
-  async replaceChildren(caseId, { answers: ans, hints: h, evidence: ev }) {
+  async replaceChildren(caseId, fileId, { answers: ans, hints: h, evidence: ev }) {
     if (ans) {
-      await deleteRecursive(refs.answers(caseId));
+      await deleteRecursive(refs.answers(caseId, fileId));
       const b = firestore.batch();
-      for (const a of ans) b.set(refs.answers(caseId).doc(), { value: a.value });
+      for (const a of ans) b.set(refs.answers(caseId, fileId).doc(), { value: a.value });
       await b.commit();
     }
     if (h) {
-      await deleteRecursive(refs.hints(caseId));
+      await deleteRecursive(refs.hints(caseId, fileId));
       const b = firestore.batch();
-      h.forEach((hh, i) => b.set(refs.hints(caseId).doc(), { title: hh.title ?? '', text: hh.text, cost: hh.cost, order: i + 1 }));
+      h.forEach((hh, i) =>
+        b.set(refs.hints(caseId, fileId).doc(), { title: hh.title ?? '', text: hh.text, cost: hh.cost, order: i + 1 }),
+      );
       await b.commit();
     }
     if (ev) {
-      await deleteRecursive(refs.evidence(caseId));
+      await deleteRecursive(refs.evidence(caseId, fileId));
       const b = firestore.batch();
-      ev.forEach((ee, i) => b.set(refs.evidence(caseId).doc(), { label: ee.label, value: ee.value, order: i + 1 }));
+      ev.forEach((ee, i) =>
+        b.set(refs.evidence(caseId, fileId).doc(), { label: ee.label, value: ee.value, order: i + 1 }),
+      );
       await b.commit();
     }
-  },
-  async delete(caseId) {
-    await deleteRecursive(refs.case(caseId));
-  },
-  async lastOrder(eventId) {
-    const rows = await cases.list(eventId);
-    return rows.length ? rows[rows.length - 1].order : 0;
   },
 };
 
 export const answers = {
-  async list(caseId) {
-    return mapCol(await refs.answers(caseId).orderBy('__name__').get());
+  async list(caseId, fileId) {
+    return mapCol(await refs.answers(caseId, fileId).orderBy('__name__').get());
   },
 };
 
 export const hints = {
-  async list(caseId) {
-    return mapCol(await refs.hints(caseId).orderBy('order', 'asc').get());
+  async list(caseId, fileId) {
+    return mapCol(await refs.hints(caseId, fileId).orderBy('order', 'asc').get());
   },
-  async get(caseId, hintId) {
-    return mapDoc(await refs.hint(caseId, hintId).get());
+  async get(caseId, fileId, hintId) {
+    return mapDoc(await refs.hint(caseId, fileId, hintId).get());
   },
 };
 
 export const evidence = {
-  async list(caseId) {
-    return mapCol(await refs.evidence(caseId).orderBy('order', 'asc').get());
+  async list(caseId, fileId) {
+    return mapCol(await refs.evidence(caseId, fileId).orderBy('order', 'asc').get());
   },
 };
 
@@ -219,6 +266,10 @@ export const teams = {
   },
   async getByCode(eventId, code) {
     const snap = await refs.teams().where('eventId', '==', eventId).where('code', '==', code).limit(2).get();
+    return snap.docs.length ? mapDoc(snap.docs[0]) : null;
+  },
+  async getByName(eventId, name) {
+    const snap = await refs.teams().where('eventId', '==', eventId).where('name', '==', name).limit(2).get();
     return snap.docs.length ? mapDoc(snap.docs[0]) : null;
   },
   async list(eventId) {
@@ -246,30 +297,63 @@ export const memberships = {
   },
 };
 
+// Submissions are sub-file answer attempts. Each row stores both the parent
+// Case (`caseId`) and the sub-file (`fileId`) it belongs to.
 export const subs = {
-  async solvedCaseIds(teamId) {
-    const snap = await refs.submissions().where('teamId', '==', teamId).where('correct', '==', true).get();
-    return new Set(snap.docs.map((d) => d.data().caseId));
+  async solvedFileIdsAll(teamId) {
+    const snap = await refs
+      .submissions()
+      .where('teamId', '==', teamId)
+      .where('correct', '==', true)
+      .get();
+    return new Set(snap.docs.map((d) => d.data().fileId));
   },
-  async solvedForTeam(teamId) {
-    const snap = await refs.submissions().where('teamId', '==', teamId).where('correct', '==', true).get();
+  async solvedFileIds(teamId, caseId) {
+    const snap = await refs
+      .submissions()
+      .where('teamId', '==', teamId)
+      .where('caseId', '==', caseId)
+      .where('correct', '==', true)
+      .get();
+    return new Set(snap.docs.map((d) => d.data().fileId));
+  },
+  async solvedForEventTeam(eventId, teamId) {
+    const snap = await refs
+      .submissions()
+      .where('eventId', '==', eventId)
+      .where('teamId', '==', teamId)
+      .where('correct', '==', true)
+      .get();
     return snap.docs.map((d) => ({ id: d.id, ...revive(d.data()) }));
   },
-  async attempts(teamId, caseId) {
-    const snap = await refs.submissions().where('teamId', '==', teamId).where('caseId', '==', caseId).get();
+  async attempts(teamId, caseId, fileId) {
+    const snap = await refs
+      .submissions()
+      .where('teamId', '==', teamId)
+      .where('caseId', '==', caseId)
+      .where('fileId', '==', fileId)
+      .get();
     return snap.size;
   },
-  async countsByCase(teamId) {
-    const snap = await refs.submissions().where('teamId', '==', teamId).get();
+  async attemptsByCase(teamId, caseId) {
+    const snap = await refs
+      .submissions()
+      .where('teamId', '==', teamId)
+      .where('caseId', '==', caseId)
+      .get();
     const out = new Map();
     for (const d of snap.docs) {
-      const cid = d.data().caseId;
-      out.set(cid, (out.get(cid) || 0) + 1);
+      const fid = d.data().fileId;
+      out.set(fid, (out.get(fid) || 0) + 1);
     }
     return out;
   },
   async solvedCounts(eventId) {
-    const snap = await refs.submissions().where('eventId', '==', eventId).where('correct', '==', true).get();
+    const snap = await refs
+      .submissions()
+      .where('eventId', '==', eventId)
+      .where('correct', '==', true)
+      .get();
     const out = new Map();
     for (const d of snap.docs) {
       const tid = d.data().teamId;
@@ -282,8 +366,13 @@ export const subs = {
       await refs.submissions().where('eventId', '==', eventId).orderBy('createdAt', 'desc').get(),
     );
   },
-  async correctForTeamCase(teamId, caseId) {
-    const snap = await refs.submissions().where('teamId', '==', teamId).where('caseId', '==', caseId).get();
+  async correctForTeam(teamId, caseId, fileId) {
+    const snap = await refs
+      .submissions()
+      .where('teamId', '==', teamId)
+      .where('caseId', '==', caseId)
+      .where('fileId', '==', fileId)
+      .get();
     return snap.docs.filter((d) => d.data().correct === true).map(mapDoc)[0] || null;
   },
   async solvedTotal(eventId) {
@@ -298,6 +387,16 @@ export const subs = {
   async hasForCase(caseId) {
     return (await refs.submissions().where('caseId', '==', caseId).limit(1).get()).size > 0;
   },
+  async hasForFile(caseId, fileId) {
+    return (
+      await refs
+        .submissions()
+        .where('caseId', '==', caseId)
+        .where('fileId', '==', fileId)
+        .limit(1)
+        .get()
+    ).size > 0;
+  },
 };
 
 export const hintUsages = {
@@ -309,27 +408,42 @@ export const hintUsages = {
     const snap = await refs.hintUsages().where('teamId', '==', teamId).get();
     return snap.docs.map(mapDoc);
   },
-  async byCase(teamId, caseId) {
-    const snap = await refs.hintUsages().where('teamId', '==', teamId).where('caseId', '==', caseId).get();
+  async byFile(teamId, caseId, fileId) {
+    const snap = await refs
+      .hintUsages()
+      .where('teamId', '==', teamId)
+      .where('caseId', '==', caseId)
+      .where('fileId', '==', fileId)
+      .get();
     return snap.docs.map(mapDoc);
   },
 };
 
-export const finals = {
+// Closing challenges: one per team per Case, with a rank awarded by the first
+// three teams that close the Case (transaction on the Case's closureCount).
+export const closings = {
   async get(id) {
-    return mapDoc(await refs.final(id).get());
+    return mapDoc(await refs.closing(id).get());
   },
-  async getByTeam(teamId) {
-    const snap = await refs.finals().where('teamId', '==', teamId).limit(2).get();
+  async getByTeam(caseId, teamId) {
+    const snap = await refs
+      .closings()
+      .where('caseId', '==', caseId)
+      .where('teamId', '==', teamId)
+      .limit(2)
+      .get();
     return snap.docs.length ? mapDoc(snap.docs[0]) : null;
   },
   async list(eventId) {
-    return mapCol(
-      await refs.finals().where('eventId', '==', eventId).orderBy('createdAt', 'asc').get(),
-    );
+    const rows = mapCol(await refs.closings().where('eventId', '==', eventId).get());
+    return rows.sort((a, b) => new Date(a.closedAt) - new Date(b.closedAt));
+  },
+  async listCase(caseId) {
+    const rows = mapCol(await refs.closings().where('caseId', '==', caseId).get());
+    return rows.sort((a, b) => (a.rank ?? 0) - (b.rank ?? 0));
   },
   async count(eventId) {
-    return (await refs.finals().where('eventId', '==', eventId).get()).size;
+    return (await refs.closings().where('eventId', '==', eventId).get()).size;
   },
 };
 

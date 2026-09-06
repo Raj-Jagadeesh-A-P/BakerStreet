@@ -62,7 +62,7 @@ export default function App() {
           }
         />
         <Route
-          path="/case/:id"
+          path="/case/:cid/:fid"
           element={
             <RequireAuth>
               <CaseView />
@@ -78,7 +78,7 @@ export default function App() {
           }
         />
         <Route
-          path="/final"
+          path="/final/:cid"
           element={
             <RequireAuth>
               <Final />

@@ -63,8 +63,8 @@ export default function AdminTeams() {
                 <TH>Team</TH>
                 <TH>Members</TH>
                 <TH className="text-right">Solved</TH>
+                <TH className="text-right">Cases closed</TH>
                 <TH className="text-right">Score</TH>
-                <TH>Final</TH>
                 <TH></TH>
               </TR>
             </THead>
@@ -89,16 +89,8 @@ export default function AdminTeams() {
                     ))}
                   </TD>
                   <TD className="text-right tabular-nums">{t.solved}</TD>
+                  <TD className="text-right tabular-nums">{t.casesClosed}</TD>
                   <TD className="text-right font-semibold tabular-nums text-ink">{t.score}</TD>
-                  <TD>
-                    {t.finalStatus ? (
-                      <Badge tone={t.finalStatus === 'SCORED' ? 'gold' : t.finalStatus === 'REJECTED' ? 'danger' : 'info'}>
-                        {t.finalStatus} {t.finalScore != null ? `· ${t.finalScore}` : ''}
-                      </Badge>
-                    ) : (
-                      <span className="text-xs text-ink-faint">—</span>
-                    )}
-                  </TD>
                   <TD>
                     <Button size="sm" variant="ghost" onClick={() => remove(t)}>
                       <Trash2 className="h-4 w-4 text-red-600 dark:text-red-400" />

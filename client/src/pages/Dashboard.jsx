@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowRight, Lock, Check, FolderOpen, Copy } from 'lucide-react';
+import { ArrowRight, Lock, Check, FolderOpen, Copy, Trophy } from 'lucide-react';
 import { api } from '../api.js';
 import { ParticipantHeader } from '../components/brand.jsx';
 import { Timer } from '../components/timer.jsx';
@@ -11,51 +11,19 @@ import { Alert } from '../components/ui/alert.jsx';
 import { PageState, ErrorState } from '../components/ui/state.jsx';
 
 const ACTIVE = ['LIVE', 'PAUSED', 'ENDED'];
+const IDENTITY_LABELS = {
+  PRIVATE_CLIENT: 'Private Client',
+  SCOTLAND_YARD: 'Scotland Yard',
+  MYCROFT_HOLMES: 'Mycroft Holmes',
+};
 
-function CaseRow({ c, started }) {
-  const nav = useNavigate();
-  const isSolved = c.status === 'SOLVED';
-  const isUnlocked = started && c.status === 'UNLOCKED';
-
-  return (
-    <div className="flex items-center justify-between gap-3 px-5 py-3 not-last:border-b not-last:border-edge/60">
-      <div className="flex items-center gap-3">
-        {isSolved ? (
-          <Check className="h-5 w-5 text-emerald-400" />
-        ) : isUnlocked ? (
-          <FolderOpen className="h-5 w-5 text-mark" />
-        ) : (
-          <Lock className="h-5 w-5 text-ink-faint/50" />
-        )}
-        <div>
-          <p className={`text-sm font-medium ${isSolved || isUnlocked ? 'text-ink' : 'text-ink-faint/70'}`}>
-            <span className={`font-type ${isSolved || isUnlocked ? 'text-mark' : 'text-ink-faint/50'}`}>
-              {String(c.order).padStart(2, '0')}
-            </span>
-            <span className="ml-1">{c.title}</span>
-            {c.finalCase && <span className="ml-2 rounded bg-ink/10 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-ink-faint">Final</span>}
-          </p>
-          {isUnlocked ? (
-            <p className="text-xs text-ink-faint">
-              {c.points} pts
-              {c.hintsUsed > 0 && ` • hint${c.hintsUsed > 1 ? 's' : ''} used`}
-            </p>
-          ) : (
-            <span className="redacted inline-block h-3 w-28 opacity-40" aria-hidden />
-          )}
-        </div>
-      </div>
-      {isSolved ? (
-        <Badge tone="success">Solved</Badge>
-      ) : isUnlocked ? (
-        <Button size="sm" onClick={() => nav(c.finalCase ? '/final' : `/case/${c.id}`)}>
-          Open
-        </Button>
-      ) : (
-        <Badge>Locked</Badge>
-      )}
-    </div>
-  );
+function openTarget(navigate, cid, continueTarget) {
+  if (!continueTarget) return;
+  if (continueTarget.type === 'CLOSING') {
+    navigate(`/final/${cid}`);
+  } else {
+    navigate(`/case/${cid}/${continueTarget.id}`);
+  }
 }
 
 export default function Dashboard() {
@@ -76,10 +44,6 @@ export default function Dashboard() {
         const d = await api(`/events/${me.membership.eventId}/dashboard`);
         setData(d);
       } catch (err) {
-        if (err.message === "You haven't joined an event yet.") {
-          navigate('/join', { replace: true });
-          return;
-        }
         setError(err.message);
       } finally {
         setLoading(false);
@@ -92,9 +56,8 @@ export default function Dashboard() {
   if (!data) return null;
 
   const started = ACTIVE.includes(data.event.status);
-  const hidden = (s) => (started ? s : s === 'SOLVED' ? s : 'LOCKED');
-  const caseRows = data.cases.map((c) => ({ ...c, status: hidden(c.status) }));
-  const next = data.continueCaseId;
+  const current = data.currentCase;
+  const cont = data.continue;
 
   function copyCode() {
     navigator.clipboard?.writeText(data.team.code);
@@ -102,13 +65,24 @@ export default function Dashboard() {
     setTimeout(() => setCopied(false), 1200);
   }
 
+  const identityLabel = IDENTITY_LABELS[data.team.identity] || null;
+
   return (
     <div className="flex min-h-screen flex-col bg-paper">
       <ParticipantHeader />
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6">
+        {started && data.event.status !== 'LIVE' && (
+          <Alert tone="info" className="mb-4">
+            {data.event.status === 'ENDED'
+              ? 'The investigation has ended.'
+              : data.event.status === 'PAUSED'
+                ? 'The investigation is paused. Submissions are disabled.'
+                : 'The investigation has not started yet.'}
+          </Alert>
+        )}
         {!started && data.event.status !== 'DRAFT' && data.event.status !== 'READY' && (
           <Alert tone="info" className="mb-4">
-            {data.event.status === 'ENDED' ? 'This event has ended.' : 'This event has not started yet.'}
+            {data.event.status === 'ENDED' ? 'The investigation has ended.' : 'The investigation has not started yet.'}
           </Alert>
         )}
 
@@ -122,6 +96,7 @@ export default function Dashboard() {
                 {data.team.code} <Copy className="h-3 w-3" />
               </button>
               {copied && <span className="text-xs text-emerald-400">copied</span>}
+              {identityLabel && <Badge tone="gold">{identityLabel}</Badge>}
             </div>
           </div>
           <CardContent>
@@ -142,29 +117,112 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
+        <Card className="mb-6 overflow-hidden">
+          <div className="noir-texture border-b border-edge bg-solid px-5 py-4 text-white">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="font-type text-xs tracking-[0.3em] text-mark-bright/80">
+                {current ? `Case ${String(current.order).padStart(2, '0')} — In Progress` : 'Current Case'}
+              </p>
+              {current && <Badge tone="gold" className="ml-auto">{current.status}</Badge>}
+            </div>
+            <h1 className="mt-1 font-type text-2xl">{current ? current.title : 'No case is open'}</h1>
+          </div>
+          <CardContent className="space-y-4">
+            {current ? (
+              <>
+                {current.plot && (
+                  <div className="rounded-md border border-edge bg-surface/60 px-4 py-3">
+                    <p className="whitespace-pre-wrap font-type text-[15px] leading-7 text-ink-soft">{current.plot}</p>
+                  </div>
+                )}
+                <div className="flex flex-wrap items-center gap-4">
+<div className="flex items-center gap-1.5 text-xs text-ink-faint">
+                    <Trophy className="h-4 w-4 text-mark" />
+                    <span>
+                      Podium bonus: 1st {current.podium.first} / 2nd {current.podium.second} / 3rd {current.podium.third}
+                    </span>
+                  </div>
+                <Button
+                  disabled={!started || !cont}
+                  onClick={() => openTarget(navigate, current.id, cont)}
+                >
+                  {cont ? (cont.type === 'CLOSING' ? 'Close the Case' : 'Continue to next sub-file') : 'Waiting for the next case'}
+                  {cont && <ArrowRight className="h-4 w-4" />}
+                </Button>
+                </div>
+              </>
+            ) : (
+              <p className="text-sm text-ink-faint">An admin will open the next case. Sub-files unlock in order once it is live.</p>
+            )}
+          </CardContent>
+        </Card>
+
         <Card className="mb-6">
           <CardHeader>
-            <CardTitle>Case Files</CardTitle>
+            <CardTitle>Cases</CardTitle>
             <span className="font-mono text-xs text-ink-faint">
-              {data.cases.filter((c) => c.status === 'SOLVED').length}/{data.cases.length} solved
+              {data.cases.reduce((n, c) => n + (c.files?.solved ?? 0), 0)}/
+              {data.cases.reduce((n, c) => n + (c.files?.total ?? 0), 0)} sub-files solved
             </span>
           </CardHeader>
           <div className="divide-y divide-edge/60">
-            {caseRows.map((c) => (
-              <CaseRow key={c.id} c={c} started={started} />
-            ))}
+            {data.cases.map((c) => {
+              const isOpen = c.status === 'OPEN';
+              const isClosed = c.status === 'CLOSED';
+              const isCurrent = current && current.id === c.id;
+              return (
+                <div key={c.id} className="flex items-center justify-between gap-3 px-5 py-3">
+                  <div className="flex items-center gap-3">
+                    {isClosed ? (
+                      <Check className="h-5 w-5 text-emerald-400" />
+                    ) : isOpen ? (
+                      <FolderOpen className="h-5 w-5 text-mark" />
+                    ) : (
+                      <Lock className="h-5 w-5 text-ink-faint/50" />
+                    )}
+                    <div>
+                      <p className={`text-sm font-medium ${isOpen || isClosed ? 'text-ink' : 'text-ink-faint/70'}`}>
+                        <span className={`font-type ${isOpen || isClosed ? 'text-mark' : 'text-ink-faint/50'}`}>
+                          {String(c.order).padStart(2, '0')}
+                        </span>
+                        <span className="ml-1">{c.title}</span>
+                        {isCurrent && <span className="ml-2 rounded bg-mark/15 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-mark">Now</span>}
+                      </p>
+                      <p className="text-xs text-ink-faint">
+                        {c.files?.total ? `${c.files.solved}/${c.files.total} sub-files` : started ? 'No sub-files yet' : 'Locked until the case opens'}
+                      </p>
+                    </div>
+                  </div>
+                  {isOpen ? (
+                    <Button size="sm" onClick={() => openTarget(navigate, c.id, cont)}>
+                      Open
+                    </Button>
+                  ) : isClosed ? (
+                    <Badge tone="success">Closed</Badge>
+                  ) : (
+                    <Badge>Locked</Badge>
+                  )}
+                </div>
+              );
+            })}
           </div>
           <div className="border-t border-edge px-5 py-4">
-            {next ? (
-              <Button
-                className="w-full"
-                onClick={() => navigate(data.cases.find((c) => c.id === next)?.finalCase ? '/final' : `/case/${next}`)}
-              >
-                Continue Investigation <ArrowRight className="h-4 w-4" />
-              </Button>
+            {cont ? (
+              started ? (
+                <Button
+                  className="w-full"
+                  onClick={() => openTarget(navigate, current.id, cont)}
+                >
+                  Continue Investigation <ArrowRight className="h-4 w-4" />
+                </Button>
+              ) : (
+                <Button className="w-full" variant="outline" disabled>
+                  The investigation begins when the event starts
+                </Button>
+              )
             ) : (
               <Button className="w-full" variant="outline" disabled>
-                Investigation complete
+                {started ? 'Waiting for the next case' : 'The investigation begins when the event starts'}
               </Button>
             )}
           </div>
@@ -176,7 +234,7 @@ export default function Dashboard() {
           </CardHeader>
           {data.evidence.length === 0 ? (
             <CardContent>
-              <p className="text-sm text-ink-faint">No evidence yet. Solve cases to collect evidence.</p>
+              <p className="text-sm text-ink-faint">No evidence yet. Solve sub-files to collect evidence.</p>
             </CardContent>
           ) : (
             <div className="divide-y divide-edge/60">

@@ -1,20 +1,9 @@
 import { firestore, adminAuth } from '../src/db/firebase.js';
-import { refs, users, events, cases, teams } from '../src/db/repo.js';
+import { refs, users, events, cases, subfiles, teams } from '../src/db/repo.js';
 import { randomCode } from '../src/utils/random.js';
-import { caseSeed } from '../seed/cases/index.js';
+import { caseDefinitions } from '../seed/cases/index.js';
 
 const EVENT_CODE = 'OSD2026';
-
-const DEFAULT_FINAL_SCORING = {
-  contributor: 100,
-  commit: 100,
-  issue: 75,
-  pr: 75,
-  rootCause: 100,
-  fix: 100,
-  evidence: 50,
-  total: 600,
-};
 
 async function ensureFirebaseUser(email, password) {
   try {
@@ -26,13 +15,13 @@ async function ensureFirebaseUser(email, password) {
   }
 }
 
-async function upsertUser(email, name, password, role) {
+async function upsertUser(email, name, password, role, identity = null) {
   const fb = await ensureFirebaseUser(email, password);
   const existing = await users.get(fb.uid);
   if (existing) {
-    return users.update(fb.uid, { name, email, role });
+    return users.update(fb.uid, { name, email, role, identity });
   }
-  return users.create({ name, email, role }, fb.uid);
+  return users.create({ name, email, role, identity }, fb.uid);
 }
 
 async function seedEvent() {
@@ -52,34 +41,51 @@ async function seedEvent() {
     teamMinSize: 2,
     teamMaxSize: 3,
     pollIntervalSeconds: 8,
-    finalScoring: DEFAULT_FINAL_SCORING,
   });
 
-  for (const c of caseSeed) {
-    await cases.create(
-      event.id,
-      {
-        title: c.title,
-        order: c.order,
-        finalCase: c.finalCase ?? false,
-        published: true,
-        type: c.type,
-        story: c.story,
-        question: c.question,
-        githubUrl: c.githubUrl,
-        caseInsensitive: c.caseInsensitive ?? true,
-        normalize: c.normalize ?? true,
-        regex: null,
-        points: c.points,
-        wrongPenalty: c.wrongPenalty,
-        maxAttempts: null,
-        options: null,
+  for (const def of caseDefinitions) {
+    const cas = await cases.create(event.id, {
+      title: def.title,
+      plot: def.plot,
+      order: def.order,
+      published: true,
+      status: 'LOCKED',
+      startsAt: null,
+      closedAt: null,
+      closureCount: 0,
+      closing: {
+        answers: def.closing.answers,
+        caseInsensitive: def.closing.caseInsensitive,
+        normalize: def.closing.normalize,
+        regex: def.closing.regex,
       },
-      { answers: c.answers, hints: c.hints, evidence: c.evidence },
-    );
+      podium: def.podium ?? {},
+    });
+    for (const f of def.files) {
+      await subfiles.create(
+        cas.id,
+        {
+          title: f.title,
+          type: f.type,
+          story: f.story,
+          question: f.question,
+          githubUrl: f.githubUrl,
+          published: true,
+          caseInsensitive: f.caseInsensitive ?? true,
+          normalize: f.normalize ?? true,
+          regex: null,
+          points: f.points,
+          wrongPenalty: f.wrongPenalty ?? 5,
+          maxAttempts: null,
+          options: null,
+          order: f.order,
+        },
+        { answers: f.answers, hints: f.hints, evidence: f.evidence },
+      );
+    }
   }
 
-  console.log(`Seeded event ${event.name} (${EVENT_CODE}) with ${caseSeed.length} cases.`);
+  console.log(`Seeded event ${event.name} (${EVENT_CODE}) with ${caseDefinitions.length} cases.`);
   return event;
 }
 
@@ -90,6 +96,7 @@ async function seedDemoTeam(event) {
     'Demo Detective',
     process.env.SEED_DEMO_PASSWORD || 'demo-password-123',
     'PARTICIPANT',
+    'PRIVATE_CLIENT',
   );
   const partnerEmail = process.env.SEED_DEMO_PARTNER_EMAIL || 'partner@glugot.dev';
   const partner = await upsertUser(
@@ -97,6 +104,7 @@ async function seedDemoTeam(event) {
     'Partner Detective',
     process.env.SEED_DEMO_PARTNER_PASSWORD || 'partner-password-123',
     'PARTICIPANT',
+    'SCOTLAND_YARD',
   );
 
   const existingTeams = await teams.list(event.id);
@@ -137,29 +145,31 @@ async function seedDemoTeam(event) {
     });
   });
 
-  const rows = await cases.list(event.id);
-  const warmup = rows.find((c) => c.order === 1);
-  const case1 = rows.find((c) => c.order === 2);
-  const case2 = rows.find((c) => c.order === 3);
+  // Demo progress: fully solves the first case (both sub-files) so the closing
+  // challenge can be reached as soon as an admin opens the case.
+  const caseRows = await cases.list(event.id);
+  const genesis = caseRows.find((c) => c.order === 1);
+  const files = await subfiles.list(genesis.id);
   const solved = [
-    { row: warmup, answer: 'bakerstreet' },
-    { row: case1, answer: 'react/react' },
-    { row: case2, answer: 'MIT' },
-  ];
+    { file: files.find((f) => f.order === 1), answer: 'bakerstreet' },
+    { file: files.find((f) => f.order === 2), answer: 'react/react' },
+  ].filter((x) => x.file);
   await firestore.runTransaction(async (tx) => {
-    for (const { row, answer } of solved) {
+    for (const { file, answer } of solved) {
       tx.create(refs.submissionDoc(), {
         eventId: event.id,
         teamId: teamRef.id,
-        caseId: row.id,
+        caseId: genesis.id,
+        fileId: file.id,
         answer,
         correct: true,
         createdAt: new Date(),
       });
     }
-    tx.update(refs.team(teamRef.id), { score: solved.reduce((sum, s) => sum + s.row.points, 0) });
+    const score = solved.reduce((sum, s) => sum + s.file.points, 0);
+    tx.update(refs.team(teamRef.id), { score });
   });
-  console.log(`Seeded demo team "Ctrl+Alt+Elite" (${demoEmail}) with ${solved.length} solved cases.`);
+  console.log(`Seeded demo team "Ctrl+Alt+Elite" (${demoEmail}) with ${solved.length} sub-files solved in Case 01.`);
 }
 
 async function seedAdmin() {

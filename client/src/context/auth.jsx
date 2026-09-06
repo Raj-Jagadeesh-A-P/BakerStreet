@@ -29,14 +29,23 @@ export function firebaseErrorMessage(err) {
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
+  const [membership, setMembership] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    api('/auth/me')
-      .then((d) => setUser(d.user))
-      .catch(() => setUser(null))
-      .finally(() => setLoading(false));
+  const refreshMe = useCallback(async () => {
+    try {
+      const d = await api('/auth/me');
+      setUser(d.user);
+      setMembership(d.membership);
+    } catch {
+      setUser(null);
+      setMembership(null);
+    }
   }, []);
+
+  useEffect(() => {
+    refreshMe().finally(() => setLoading(false));
+  }, [refreshMe]);
 
   const login = useCallback(async (email, password) => {
     let credential;
@@ -47,11 +56,11 @@ export function AuthProvider({ children }) {
     }
     const idToken = await credential.user.getIdToken();
     const d = await api('/auth/login', { method: 'POST', body: { idToken } });
-    setUser(d.user);
+    await refreshMe();
     return d.user;
-  }, []);
+  }, [refreshMe]);
 
-  const register = useCallback(async (name, email, password) => {
+  const register = useCallback(async (name, email, password, identity) => {
     let credential;
     try {
       credential = await createUserWithEmailAndPassword(auth, email, password);
@@ -64,10 +73,13 @@ export function AuthProvider({ children }) {
       // Non-fatal; the name lives in the Firestore profile.
     }
     const idToken = await credential.user.getIdToken();
-    const d = await api('/auth/register', { method: 'POST', body: { idToken, name } });
-    setUser(d.user);
+    const d = await api('/auth/register', {
+      method: 'POST',
+      body: { idToken, name, identity },
+    });
+    await refreshMe();
     return d.user;
-  }, []);
+  }, [refreshMe]);
 
   const logout = useCallback(async () => {
     try {
@@ -81,10 +93,11 @@ export function AuthProvider({ children }) {
       if (!(e instanceof ApiError && e.status === 401)) throw e;
     }
     setUser(null);
+    setMembership(null);
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout }}>
+    <AuthContext.Provider value={{ user, membership, loading, login, register, logout, refreshMe }}>
       {children}
     </AuthContext.Provider>
   );

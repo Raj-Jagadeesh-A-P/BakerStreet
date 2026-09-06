@@ -8,7 +8,7 @@ import { Alert } from '../../components/ui/alert.jsx';
 
 const TYPES = ['TEXT', 'NUMBER', 'URL', 'GITHUB_REPOSITORY', 'COMMIT_SHA', 'USERNAME', 'MULTIPLE_CHOICE'];
 
-function ListEditor({ title, items, onChange, renderItem, placeholder, schema }) {
+function ListEditor({ title, items, onChange, renderItem, schema }) {
   const [rows, setRows] = useState(items);
   useEffect(() => setRows(items), [items]);
 
@@ -40,7 +40,7 @@ function ListEditor({ title, items, onChange, renderItem, placeholder, schema })
         {rows.length === 0 && <p className="text-xs text-ink-faint">None yet.</p>}
         {rows.map((row, i) => (
           <div key={i} className="flex items-start gap-2">
-            <div className="grid flex-1 gap-2">{renderItem(row, (patch) => update(i, patch), placeholder)}</div>
+            <div className="grid flex-1 gap-2">{renderItem(row, (patch) => update(i, patch))}</div>
             <Button type="button" size="sm" variant="ghost" onClick={() => remove(i)} className="h-8 w-8 p-0">
               <Trash2 className="h-4 w-4 text-red-400" />
             </Button>
@@ -51,7 +51,7 @@ function ListEditor({ title, items, onChange, renderItem, placeholder, schema })
   );
 }
 
-export default function CaseEditor({ open, onClose, eventId, caseRow, onSaved }) {
+export default function CaseEditor({ open, onClose, eventId, caseId, fileRow, onSaved }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [f, setF] = useState({});
@@ -63,44 +63,43 @@ export default function CaseEditor({ open, onClose, eventId, caseRow, onSaved })
   useEffect(() => {
     if (!open) return;
     setError(null);
-    if (caseRow) {
+    if (fileRow) {
       setF({
-        title: caseRow.title,
-        type: caseRow.type,
-        story: caseRow.story,
-        question: caseRow.question,
-        githubUrl: caseRow.githubUrl ?? '',
-        points: caseRow.points,
-        wrongPenalty: caseRow.wrongPenalty,
-        maxAttempts: caseRow.maxAttempts ?? '',
-        caseInsensitive: caseRow.caseInsensitive,
-        normalize: caseRow.normalize,
-        regex: caseRow.regex ?? '',
-        finalCase: caseRow.finalCase,
-        published: caseRow.published,
+        title: fileRow.title,
+        type: fileRow.type,
+        story: fileRow.story,
+        question: fileRow.question,
+        githubUrl: fileRow.githubUrl ?? '',
+        points: fileRow.points,
+        wrongPenalty: fileRow.wrongPenalty,
+        maxAttempts: fileRow.maxAttempts ?? '',
+        caseInsensitive: fileRow.caseInsensitive,
+        normalize: fileRow.normalize,
+        regex: fileRow.regex ?? '',
+        published: fileRow.published,
       });
-      setAnswers(caseRow.answers.map((a) => a.value));
-      setHints(caseRow.hints.map((h) => ({ title: h.title, text: h.text, cost: h.cost })));
-      setEvidence(caseRow.evidence.map((e) => ({ label: e.label, value: e.value })));
-      setOptionsText(caseRow.options?.options?.join('\n') ?? '');
+      setAnswers(fileRow.answers.map((a) => a.value));
+      setHints(fileRow.hints.map((h) => ({ title: h.title, text: h.text, cost: h.cost })));
+      setEvidence(fileRow.evidence.map((e) => ({ label: e.label, value: e.value })));
+      setOptionsText(fileRow.options?.options?.join('\n') ?? '');
     } else {
       setF({
         title: '', type: 'TEXT', story: '', question: '', githubUrl: '',
         points: 100, wrongPenalty: 5, maxAttempts: '', caseInsensitive: true, normalize: true,
-        regex: '', finalCase: false, published: true,
+        regex: '', published: true,
       });
       setAnswers([]);
       setHints([]);
       setEvidence([]);
       setOptionsText('');
     }
-  }, [open, caseRow]);
+  }, [open, fileRow]);
 
   function set(k) {
     return (e) => setF((prev) => ({ ...prev, [k]: e.target.value }));
   }
-  function flag(k, e) {
-    return (e2) => setF((prev) => ({ ...prev, [k]: e2.target.checked }));
+  function flag(k) {
+    return (e) => setF((prev) => ({ ...prev, [k]: e.target.checked }));
   }
 
   async function save(e) {
@@ -113,15 +112,15 @@ export default function CaseEditor({ open, onClose, eventId, caseRow, onSaved })
       points: Number(f.points),
       wrongPenalty: Number(f.wrongPenalty),
       answers: answers.map((v) => ({ value: v })).filter((a) => a.value.trim()),
-      hints: hints.map((h) => ({ title: h.title, text: h.text, cost: Number(h.cost) || 10 })),
-      evidence: evidence.map((ev) => ({ label: ev.label, value: ev.value })),
+      hints: hints.map((h) => ({ title: h.title, text: h.text, cost: Number(h.cost) || 10 })).filter((h) => h.text.trim()),
+      evidence: evidence.map((ev) => ({ label: ev.label, value: ev.value })).filter((ev) => ev.value.trim()),
       options: f.type === 'MULTIPLE_CHOICE' ? { options: optionsText.split('\n').map((s) => s.trim()).filter(Boolean) } : null,
     };
     try {
-      if (caseRow) {
-        await api(`/admin/cases/${caseRow.id}`, { method: 'PUT', body });
+      if (fileRow) {
+        await api(`/admin/cases/${caseId}/subfiles/${fileRow.id}`, { method: 'PUT', body });
       } else {
-        await api(`/admin/events/${eventId}/cases`, { method: 'POST', body });
+        await api(`/admin/events/${eventId}/cases/${caseId}/files`, { method: 'POST', body });
       }
       onSaved();
       onClose();
@@ -132,18 +131,8 @@ export default function CaseEditor({ open, onClose, eventId, caseRow, onSaved })
     }
   }
 
-  const hintPlaceholder = {
-    renderItem: (row, update) => (
-      <>
-        <InputBare value={row.title} onChange={(e) => update({ title: e.target.value })} placeholder="Hint title" />
-        <InputBare value={row.text} onChange={(e) => update({ text: e.target.value })} placeholder="Hint text" />
-        <InputBare value={row.cost} onChange={(e) => update({ cost: e.target.value })} placeholder="Cost (-points)" className="w-28" />
-      </>
-    ),
-  };
-
   return (
-    <Dialog open={open} onClose={onClose} title={caseRow ? `Edit Case — ${caseRow.title}` : 'New Case'}>
+    <Dialog open={open} onClose={onClose} title={fileRow ? `Edit Sub-File — ${fileRow.title}` : 'New Sub-File'} wide>
       <form onSubmit={save} className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Title">
@@ -188,9 +177,6 @@ export default function CaseEditor({ open, onClose, eventId, caseRow, onSaved })
             <input type="checkbox" checked={f.normalize} onChange={flag('normalize')} /> Normalize whitespace
           </label>
           <label className="flex items-center gap-2 text-ink-soft">
-            <input type="checkbox" checked={f.finalCase} onChange={flag('finalCase')} /> Final case
-          </label>
-          <label className="flex items-center gap-2 text-ink-soft">
             <input type="checkbox" checked={f.published} onChange={flag('published')} /> Published
           </label>
         </div>
@@ -209,7 +195,6 @@ export default function CaseEditor({ open, onClose, eventId, caseRow, onSaved })
           title="Accepted answers"
           items={answers}
           onChange={setAnswers}
-          placeholder="Answer value"
           schema={() => ''}
           renderItem={(v, update) => <InputBare value={v} onChange={(e) => update(e.target.value)} placeholder="Accepted answer" className="font-mono" />}
         />
@@ -219,7 +204,13 @@ export default function CaseEditor({ open, onClose, eventId, caseRow, onSaved })
           items={hints}
           onChange={setHints}
           schema={() => ({ title: '', text: '', cost: 10 })}
-          {...hintPlaceholder}
+          renderItem={(row, update) => (
+            <>
+              <InputBare value={row.title} onChange={(e) => update({ title: e.target.value })} placeholder="Hint title" />
+              <InputBare value={row.text} onChange={(e) => update({ text: e.target.value })} placeholder="Hint text" />
+              <InputBare value={row.cost} onChange={(e) => update({ cost: e.target.value })} placeholder="Cost (-points)" className="w-28" />
+            </>
+          )}
         />
 
         <ListEditor
@@ -238,7 +229,7 @@ export default function CaseEditor({ open, onClose, eventId, caseRow, onSaved })
         {error && <Alert tone="danger">{error}</Alert>}
         <div className="flex justify-end gap-2">
           <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
-          <Button type="submit" disabled={busy}>{busy ? 'Saving…' : caseRow ? 'Save Case' : 'Create Case'}</Button>
+          <Button type="submit" disabled={busy}>{busy ? 'Saving…' : fileRow ? 'Save Sub-File' : 'Create Sub-File'}</Button>
         </div>
       </form>
     </Dialog>

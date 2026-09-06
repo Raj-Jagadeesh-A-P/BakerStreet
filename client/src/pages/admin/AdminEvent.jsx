@@ -44,7 +44,7 @@ export default function AdminEvent() {
   if (error) return <ErrorState error={error} />;
   if (!data) return <PageState message="Loading event…" />;
 
-  const { event, stats, scoring } = data;
+  const { event, stats } = data;
 
   return (
     <div>
@@ -86,9 +86,9 @@ export default function AdminEvent() {
         {[
           ['Teams', stats.teams],
           ['Participants', stats.participants],
-          ['Cases solved', stats.solvedSubs],
+          ['Sub-files solved', stats.solvedSubs],
           ['Submissions', stats.totalSubs],
-          ['Final reports', stats.finals],
+          ['Closings', stats.closings],
         ].map(([label, value]) => (
           <Card key={label}>
             <CardContent className="text-center">
@@ -115,15 +115,39 @@ export default function AdminEvent() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Final Case Scoring</CardTitle>
+            <CardTitle>Cases</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-2 text-sm">
-            {Object.entries(scoring).map(([k, v]) => (
-              <div key={k} className="flex justify-between">
-                <span className="capitalize text-ink-faint">{k.replace(/([a-z])([A-Z])/g, '$1 $2')}</span>
-                <span className="font-mono">{v}</span>
+          <CardContent>
+            {(event.cases || []).length === 0 ? (
+              <p className="text-sm text-ink-faint">No cases yet. Add them under “Cases”.</p>
+            ) : (
+              <div className="space-y-1.5">
+                {(event.cases || [])
+                  .slice()
+                  .sort((a, b) => a.order - b.order)
+                  .map((c) => (
+                    <div key={c.id} className="flex items-center justify-between gap-3 rounded-md border border-edge px-3 py-2 text-sm">
+                      <span className="min-w-0 truncate font-medium text-ink">
+                        <span className="font-mono mr-1.5 text-ink-faint">#{c.order}</span>
+                        {c.title}
+                      </span>
+                      <div className="flex shrink-0 items-center gap-2">
+                        {c.status === 'LOCKED' && (
+                          <Button size="sm" onClick={async () => { setError(null); try { await api(`/admin/cases/${c.id}/start`, { method: 'POST' }); await load(); } catch (e) { setError(e.message); } }}>
+                            <Play className="h-3.5 w-3.5" /> Start
+                          </Button>
+                        )}
+                        {c.status === 'OPEN' && (
+                          <Button size="sm" variant="danger" onClick={async () => { setError(null); try { await api(`/admin/cases/${c.id}/close`, { method: 'POST' }); await load(); } catch (e) { setError(e.message); } }}>
+                            <Square className="h-3.5 w-3.5" /> Close
+                          </Button>
+                        )}
+                        <Badge tone={STATUS_TONE[c.status]}>{c.status}</Badge>
+                      </div>
+                    </div>
+                  ))}
               </div>
-            ))}
+            )}
           </CardContent>
         </Card>
       </div>
@@ -139,7 +163,7 @@ export default function AdminEvent() {
               ['teams', 'Teams'],
               ['scores', 'Scores'],
               ['submissions', 'Submissions'],
-              ['finals', 'Final results'],
+              ['closings', 'Closings'],
             ].map(([type, label]) => (
               <Button
                 key={type}

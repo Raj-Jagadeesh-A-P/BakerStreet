@@ -40,6 +40,7 @@ export default function AdminLeaderboard() {
                 <TH className="w-14">Rank</TH>
                 <TH>Team</TH>
                 <TH className="text-right">Solved</TH>
+                <TH className="text-right">Closed</TH>
                 <TH className="text-right">Score</TH>
               </TR>
             </THead>
@@ -51,6 +52,7 @@ export default function AdminLeaderboard() {
                   </TD>
                   <TD className="font-medium text-ink">{t.name}</TD>
                   <TD className="text-right tabular-nums">{t.solved}</TD>
+                  <TD className="text-right tabular-nums">{t.casesClosed}</TD>
                   <TD className="text-right font-bold tabular-nums text-ink">{t.score}</TD>
                 </TR>
               ))}
