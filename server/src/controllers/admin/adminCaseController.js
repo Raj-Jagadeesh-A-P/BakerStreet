@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { AppError, asyncHandler } from '../../middleware/errors.js';
 import { validate } from '../../middleware/validate.js';
-import { MESSAGES } from '../../config.js';
+import { IDENTITIES, MESSAGES } from '../../config.js';
 import { events, cases, subfiles, subs, closings } from '../../db/repo.js';
 import { refs, firestore } from '../../db/repo.js';
 
@@ -25,6 +25,7 @@ const caseSchema = z.object({
   plot: z.string().max(10000).optional().or(z.literal('')),
   published: z.boolean().optional(),
   order: z.number().int().min(1).optional(),
+  giver: z.enum(IDENTITIES).nullable().optional(),
   closing: CLOSING_SCHEMA.optional(),
   podium: PUSH_SCHEMA.optional(),
 });
@@ -109,6 +110,7 @@ export const listCases = asyncHandler(async (req, res) => {
       closedAt: c.closedAt,
       closing: c.closing ?? { answers: [] },
       podium: c.podium ?? {},
+      giver: c.giver ?? null,
       subFileCount: files.length,
       closureCount: closedCount.length,
       files: files.map((f) => ({
@@ -143,6 +145,7 @@ export const createCase = [
       closureCount: 0,
       closing: req.body.closing ?? { answers: [] },
       podium: req.body.podium ?? {},
+      giver: req.body.giver ?? null,
     });
     res.status(201).json({ case: caseRow });
   }),
@@ -162,6 +165,7 @@ export const updateCase = [
     if (req.body.order !== undefined) data.order = req.body.order;
     if (req.body.closing !== undefined) data.closing = req.body.closing;
     if (req.body.podium !== undefined) data.podium = req.body.podium;
+    if (req.body.giver !== undefined) data.giver = req.body.giver || null;
 
     const caseRow = await cases.update(caseId, data);
     res.json({ case: caseRow });

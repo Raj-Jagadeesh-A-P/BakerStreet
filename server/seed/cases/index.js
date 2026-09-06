@@ -15,6 +15,7 @@ import file06 from './06-the-connection.js';
 const GENESIS = {
   title: 'Genesis',
   order: 1,
+  giver: 'PRIVATE_CLIENT',
   plot:
     'The first case files survive in a single repository. Confirm the entry password to the investigation, then identify the project behind it. Once you are sure of the suspect, close the case with a verdict.',
   closing: {
@@ -33,6 +34,7 @@ const GENESIS = {
 const EARLY_DAYS = {
   title: 'The Early Days',
   order: 2,
+  giver: 'SCOTLAND_YARD',
   plot:
     'The trail moves to the beginning of the project: how it was licensed, the very first commit, and the person behind it. Trace the early contributors and close the case with the author of the first commit.',
   closing: {
@@ -52,6 +54,7 @@ const EARLY_DAYS = {
 const HOOKS = {
   title: 'The Hooks Proposal',
   order: 3,
+  giver: 'MYCROFT_HOLMES',
   plot:
     'The final arc: a proposal that changed everything. Find the RFC pull request and the engineer behind it, then close the case by naming what was proposed.',
   closing: {

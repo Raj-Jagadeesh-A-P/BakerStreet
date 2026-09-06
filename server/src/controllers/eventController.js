@@ -196,6 +196,7 @@ export const dashboard = asyncHandler(async (req, res) => {
           startsAt: openCase.startsAt,
           closedAt: openCase.closedAt,
           podium: podiumFor(openCase),
+          giver: openCase.giver ?? null,
         }
       : null,
     cases: caseRows.map((c) => {

@@ -14,6 +14,13 @@ const STATUS_TONE = { LOCKED: 'default', OPEN: 'gold', CLOSED: 'success' };
 
 const EMPTY_PODIUM = { first: 300, second: 200, third: 100, participation: 0 };
 
+const GIVERS = [
+  { id: '', label: 'None' },
+  { id: 'PRIVATE_CLIENT', label: 'Private Client' },
+  { id: 'SCOTLAND_YARD', label: 'Scotland Yard' },
+  { id: 'MYCROFT_HOLMES', label: 'Mycroft Holmes' },
+];
+
 function CaseEditor({ open, onClose, eventId, caseRow, onSaved }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
@@ -27,6 +34,7 @@ function CaseEditor({ open, onClose, eventId, caseRow, onSaved }) {
       setF({
         title: caseRow.title,
         plot: caseRow.plot ?? '',
+        giver: caseRow.giver ?? '',
         published: caseRow.published,
         closing: {
           caseInsensitive: caseRow.closing?.caseInsensitive ?? true,
@@ -40,6 +48,7 @@ function CaseEditor({ open, onClose, eventId, caseRow, onSaved }) {
       setF({
         title: '',
         plot: '',
+        giver: '',
         published: true,
         closing: { caseInsensitive: true, normalize: true, regex: '' },
         podium: { ...EMPTY_PODIUM },
@@ -69,6 +78,7 @@ function CaseEditor({ open, onClose, eventId, caseRow, onSaved }) {
     const body = {
       title: f.title,
       plot: f.plot,
+      giver: f.giver || null,
       published: f.published,
       closing: {
         answers: answersText.split('\n').map((s) => s.trim()).filter(Boolean),
@@ -98,6 +108,13 @@ function CaseEditor({ open, onClose, eventId, caseRow, onSaved }) {
       <form onSubmit={save} className="space-y-4">
         <Field label="Case title">
           <InputBare required value={f.title} onChange={set('title')} />
+        </Field>
+        <Field label="Case handed to the team by">
+          <select className="h-10 rounded-md border border-edge bg-surface px-3 text-sm text-ink" value={f.giver} onChange={set('giver')}>
+            {GIVERS.map((g) => (
+              <option key={g.id} value={g.id}>{g.label}</option>
+            ))}
+          </select>
         </Field>
         <Field label="Plot (shown to teams; also the closing context)">
           <textarea

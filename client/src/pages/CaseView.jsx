@@ -11,6 +11,12 @@ import { Alert } from '../components/ui/alert.jsx';
 import { InputBare } from '../components/ui/input.jsx';
 import { PageState, ErrorState } from '../components/ui/state.jsx';
 
+const IDENTITY_LABELS = {
+  PRIVATE_CLIENT: 'Private Client',
+  SCOTLAND_YARD: 'Scotland Yard',
+  MYCROFT_HOLMES: 'Mycroft Holmes',
+};
+
 function AnswerInput({ type, options, value, onChange }) {
   if (type === 'MULTIPLE_CHOICE') {
     return (
@@ -193,7 +199,8 @@ export default function CaseView() {
         <Card className="mb-6 overflow-hidden">
           <div className="noir-texture border-b border-edge bg-solid px-5 py-4 text-white">
             <p className="font-type text-xs tracking-[0.3em] text-mark-bright/80">
-              {parent.title} · Sub-file {String(f.order).padStart(2, '0')}
+              {parent.title}
+              {parent.giver ? ` · from ${IDENTITY_LABELS[parent.giver]}` : ''} · Sub-file {String(f.order).padStart(2, '0')}
             </p>
             <h1 className="mt-1 font-type text-2xl">{f.title}</h1>
             <div className="mt-2 flex flex-wrap items-center gap-2 font-mono text-xs text-white/70">

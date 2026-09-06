@@ -96,7 +96,7 @@ export default function Dashboard() {
                 {data.team.code} <Copy className="h-3 w-3" />
               </button>
               {copied && <span className="text-xs text-emerald-400">copied</span>}
-              {identityLabel && <Badge tone="gold">{identityLabel}</Badge>}
+              {identityLabel && <Badge tone="gold">Working for: {identityLabel}</Badge>}
             </div>
           </div>
           <CardContent>
@@ -134,6 +134,11 @@ export default function Dashboard() {
                   <div className="rounded-md border border-edge bg-surface/60 px-4 py-3">
                     <p className="whitespace-pre-wrap font-type text-[15px] leading-7 text-ink-soft">{current.plot}</p>
                   </div>
+                )}
+                {current.giver && (
+                  <p className="text-xs text-ink-faint">
+                    Handed to you by <span className="font-medium text-ink-soft">{IDENTITY_LABELS[current.giver]}</span>
+                  </p>
                 )}
                 <div className="flex flex-wrap items-center gap-4">
 <div className="flex items-center gap-1.5 text-xs text-ink-faint">

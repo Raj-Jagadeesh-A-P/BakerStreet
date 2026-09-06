@@ -49,8 +49,15 @@ export const MESSAGES = {
   generic: 'Something went wrong. Please retry.',
 };
 
-// Identity personas are theme-only: a badge each participant picks at sign-up.
+// Identity personas are theme-only: participants pick which client handed them
+// their case files. The three here are the case-givers (clients who bring a
+// case to the investigator), never the participant's own role.
 export const IDENTITIES = ['PRIVATE_CLIENT', 'SCOTLAND_YARD', 'MYCROFT_HOLMES'];
+export const IDENTITY_LABELS = {
+  PRIVATE_CLIENT: 'Private Client',
+  SCOTLAND_YARD: 'Scotland Yard',
+  MYCROFT_HOLMES: 'Mycroft Holmes',
+};
 
 // Podium bonus for closing a case. rank 4+ gets the `participation` amount
 // (0 by default). Per-case overrides live on the case doc as `podium`.

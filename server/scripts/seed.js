@@ -60,6 +60,7 @@ async function seedEvent() {
         regex: def.closing.regex,
       },
       podium: def.podium ?? {},
+      giver: def.giver ?? null,
     });
     for (const f of def.files) {
       await subfiles.create(

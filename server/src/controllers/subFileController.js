@@ -95,6 +95,7 @@ export const getCase = asyncHandler(async (req, res) => {
       closedAt: cas.closedAt,
       published: cas.published,
       podium: podiumFor(cas),
+      giver: cas.giver ?? null,
       submissionAllowed: submissionsAllowed(event),
       closing: {
         released: states.allFilesSolved,
@@ -159,7 +160,7 @@ export const getFile = asyncHandler(async (req, res) => {
       endTime: event.endTime,
       pausedAt: event.pausedAt,
     },
-    case: { id: cas.id, order: cas.order, title: cas.title, status: cas.status },
+    case: { id: cas.id, order: cas.order, title: cas.title, status: cas.status, giver: cas.giver ?? null },
     file: {
       id: fileRow.id,
       order: fileRow.order,

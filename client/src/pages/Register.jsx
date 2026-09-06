@@ -11,19 +11,19 @@ const IDENTITIES = [
   {
     id: 'PRIVATE_CLIENT',
     label: 'Private Client',
-    desc: 'A worried citizen with a confidential commission.',
+    desc: 'A worried citizen who entrusts you with this case.',
     Icon: User,
   },
   {
     id: 'SCOTLAND_YARD',
     label: 'Scotland Yard',
-    desc: 'A detective with official access to the case files.',
+    desc: 'The Yard hands you official access to the case files.',
     Icon: Shield,
   },
   {
     id: 'MYCROFT_HOLMES',
     label: 'Mycroft Holmes',
-    desc: 'A sharp broker who sees the whole map at once.',
+    desc: 'A sharp broker who briefs you with the whole map.',
     Icon: Crown,
   },
 ];
@@ -64,7 +64,7 @@ export default function Register() {
         <h1 className="mt-1 font-type text-3xl text-ink">Join Event</h1>
         <p className="mt-2 text-sm text-ink-faint">Create your participant account, then join with the event code.</p>
 
-        <Field label="Choose your identity">
+        <Field label="Choose who brought you your cases">
           <div className="space-y-2">
             {IDENTITIES.map(({ id, label, desc, Icon }) => {
               const active = identity === id;
